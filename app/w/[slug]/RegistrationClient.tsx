@@ -474,13 +474,9 @@ export default function RegistrationClient({
                 <p className="mt-[10px] text-[14px] leading-6 text-slate-600">{content.phonePitchBody}</p>
               </div>
 
-              <div className="rounded-[5px] border border-slate-200 bg-slate-50 px-4 py-3 text-[14px] text-slate-600">
-                Time zone: <span className="font-mono">{userTimeZone}</span>
-              </div>
-
-              {preview ? (
-                <div className="rounded-[8px] border border-[#D6EAF8] bg-[#E8F5FF] px-4 py-3 text-[14px] text-[#2F6FA3]">
-                  Preview mode is active. This form will not create a registrant or trigger webhooks.
+	              {preview ? (
+	                <div className="rounded-[8px] border border-[#D6EAF8] bg-[#E8F5FF] px-4 py-3 text-[14px] text-[#2F6FA3]">
+	                  Preview mode is active. This form will not create a registrant or trigger webhooks.
                 </div>
               ) : null}
 

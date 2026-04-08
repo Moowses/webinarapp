@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { WebinarRecord } from "@/app/actions/webinar-actions";
 import AdminCard from "@/components/admin/ui/AdminCard";
 
@@ -18,6 +18,11 @@ type PredefinedMessage = {
 type HTMLVideoElementWithAudioTracks = HTMLVideoElement & {
   audioTracks?: { length: number };
 };
+
+const timezoneSubscribe = () => () => {};
+const getServerTimezoneSnapshot = () => "UTC";
+const getClientTimezoneSnapshot = () =>
+  Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
 function formatSec(value: number) {
   const total = Math.max(0, Math.floor(value));
@@ -50,7 +55,11 @@ export default function WebinarPreviewClient({ webinar }: Props) {
   const [hasAudio, setHasAudio] = useState<boolean | null>(null);
   const [chatDebug, setChatDebug] = useState(true);
   const [audioDebug, setAudioDebug] = useState(true);
-  const [timezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const timezone = useSyncExternalStore(
+    timezoneSubscribe,
+    getClientTimezoneSnapshot,
+    getServerTimezoneSnapshot
+  );
 
   useEffect(() => {
     let cancelled = false;

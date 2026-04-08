@@ -142,6 +142,25 @@ function parseEmbedVideoUrl(url: string) {
   return null;
 }
 
+function withEmbedAutoplay(url: string, provider: "youtube" | "vimeo") {
+  try {
+    const parsed = new URL(url);
+    if (provider === "youtube") {
+      parsed.searchParams.set("autoplay", "1");
+      parsed.searchParams.set("mute", "1");
+      parsed.searchParams.set("playsinline", "1");
+      parsed.searchParams.set("rel", "0");
+    } else {
+      parsed.searchParams.set("autoplay", "1");
+      parsed.searchParams.set("muted", "1");
+      parsed.searchParams.set("playsinline", "1");
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 export default function ConfirmationPageClient({
   title,
   slug,
@@ -272,26 +291,28 @@ export default function ConfirmationPageClient({
                 alt={title}
                 className="h-full w-full rounded-[2px] object-cover"
               />
-            ) : embedVideo ? (
-              <div className="aspect-video w-full overflow-hidden rounded-[2px] bg-black">
-                <iframe
-                  src={embedVideo.embedUrl}
-                  title={`${title} video`}
-                  className="h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  referrerPolicy="strict-origin-when-cross-origin"
+	            ) : embedVideo ? (
+	              <div className="aspect-video w-full overflow-hidden rounded-[2px] bg-black">
+	                <iframe
+	                  src={withEmbedAutoplay(embedVideo.embedUrl, embedVideo.provider)}
+	                  title={`${title} video`}
+	                  className="h-full w-full"
+	                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+	                  allowFullScreen
+	                  referrerPolicy="strict-origin-when-cross-origin"
                 />
               </div>
             ) : (
-              <video
-                src={mediaUrl}
-                className="h-full w-full rounded-[2px] bg-black object-cover"
-                controls
-                playsInline
-                muted
-              />
-            )}
+	              <video
+	                src={mediaUrl}
+	                className="h-full w-full rounded-[2px] bg-black object-cover"
+	                autoPlay
+	                controls
+	                playsInline
+	                muted
+	                loop
+	              />
+	            )}
           </div>
 
           <div className="flex flex-col justify-between bg-white px-4 py-2 lg:px-3">
