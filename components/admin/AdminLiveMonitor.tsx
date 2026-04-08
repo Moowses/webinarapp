@@ -41,17 +41,60 @@ function formatClock(iso: string) {
 }
 
 export default function AdminLiveMonitor({ sessions, viewers }: Props) {
+  const [liveSessions, setLiveSessions] = useState(sessions);
+  const [liveViewers, setLiveViewers] = useState(viewers);
   const [selectedSessionId, setSelectedSessionId] = useState(sessions[0]?.sessionId ?? "");
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    setLiveSessions(sessions);
+  }, [sessions]);
+
+  useEffect(() => {
+    setLiveViewers(viewers);
+  }, [viewers]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/admin/live-overview", {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => ({}))) as {
+          sessions?: ActiveLiveSessionRow[];
+          viewers?: ActiveLiveViewerRow[];
+        };
+        if (!response.ok || cancelled) return;
+        setLiveSessions(payload.sessions ?? []);
+        setLiveViewers(payload.viewers ?? []);
+      } catch {
+        // Keep the last successful snapshot in the UI.
+      }
+    };
+
+    void refresh();
+    const interval = window.setInterval(refresh, 10_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
   const effectiveSelectedSessionId = useMemo(() => {
-    if (sessions.some((row) => row.sessionId === selectedSessionId)) {
+    if (liveSessions.some((row) => row.sessionId === selectedSessionId)) {
       return selectedSessionId;
     }
-    return sessions[0]?.sessionId ?? "";
-  }, [selectedSessionId, sessions]);
+    return liveSessions[0]?.sessionId ?? "";
+  }, [liveSessions, selectedSessionId]);
   const selectedSession = useMemo(
-    () => sessions.find((row) => row.sessionId === effectiveSelectedSessionId) ?? sessions[0] ?? null,
-    [effectiveSelectedSessionId, sessions]
+    () =>
+      liveSessions.find((row) => row.sessionId === effectiveSelectedSessionId) ??
+      liveSessions[0] ??
+      null,
+    [effectiveSelectedSessionId, liveSessions]
   );
 
   if (!selectedSession) {
@@ -76,12 +119,12 @@ export default function AdminLiveMonitor({ sessions, viewers }: Props) {
           </p>
         </div>
         <span className="rounded-full bg-[#E8F5FF] px-3 py-1 text-xs font-medium text-[#2F6FA3]">
-          {sessions.length} live
+          {liveSessions.length} live
         </span>
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {sessions.map((session) => {
+          {liveSessions.map((session) => {
             const active = session.sessionId === selectedSession.sessionId;
             return (
               <button
@@ -118,7 +161,7 @@ export default function AdminLiveMonitor({ sessions, viewers }: Props) {
       {isModalOpen ? (
         <MonitorModal
           session={selectedSession}
-          viewers={viewers.filter((viewer) => viewer.sessionId === selectedSession.sessionId)}
+          viewers={liveViewers.filter((viewer) => viewer.sessionId === selectedSession.sessionId)}
           onClose={() => setIsModalOpen(false)}
         />
       ) : null}

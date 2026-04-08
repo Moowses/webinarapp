@@ -37,6 +37,7 @@ type Props = {
   className?: string;
   title?: string;
   onRequestClose?: () => void;
+  mobileOverlay?: boolean;
 };
 
 const PAGE_SIZE = 200;
@@ -53,6 +54,7 @@ export default function CombinedChatStream({
   className,
   title,
   onRequestClose,
+  mobileOverlay = false,
 }: Props) {
   const [name, setName] = useState(initialDisplayName?.trim() || "Guest");
   const [text, setText] = useState("");
@@ -266,73 +268,131 @@ export default function CombinedChatStream({
 
   return (
     <div
-      className={`flex h-full min-h-0 w-full flex-col bg-[#f3f4f6] text-slate-900 ${className ?? ""}`}
+      className={`flex h-full min-h-0 w-full flex-col ${
+        mobileOverlay ? "bg-transparent text-white" : "bg-[#f3f4f6] text-slate-900"
+      } ${className ?? ""}`}
     >
-      <div className="border-b border-slate-200 bg-white px-4 py-3">
+      <div
+        className={
+          mobileOverlay
+            ? "rounded-t-3xl border-b border-white/10 bg-[rgba(9,14,28,0.58)] px-4 py-3 text-white backdrop-blur-xl"
+            : "border-b border-slate-200 bg-white px-4 py-3"
+        }
+      >
         <div className="flex items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-semibold text-slate-900">{title ?? "Chat"}</div>
-            <p className="mt-0.5 text-xs text-slate-500">Messages to Everyone</p>
+            <div className={`text-sm font-semibold ${mobileOverlay ? "text-white" : "text-slate-900"}`}>
+              {title ?? "Chat"}
+            </div>
+            <p className={`mt-0.5 text-xs ${mobileOverlay ? "text-white/70" : "text-slate-500"}`}>
+              Messages to Everyone
+            </p>
           </div>
           {onRequestClose ? (
             <button
               type="button"
               onClick={onRequestClose}
-              className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-600 lg:hidden"
+              className={`rounded px-2 py-0.5 text-xs lg:hidden ${
+                mobileOverlay
+                  ? "border border-white/20 bg-white/10 text-white"
+                  : "border border-slate-300 text-slate-600"
+              }`}
             >
               X
             </button>
           ) : null}
         </div>
         <div className="mt-3 flex items-center gap-2 text-[11px]">
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+          <span
+            className={`rounded-full px-2.5 py-1 font-medium ${
+              mobileOverlay ? "bg-white/12 text-white" : "bg-slate-100 text-slate-700"
+            }`}
+          >
             Everyone
           </span>
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-500">
+          <span
+            className={`rounded-full px-2.5 py-1 ${
+              mobileOverlay ? "bg-white/12 text-white/75" : "bg-slate-100 text-slate-500"
+            }`}
+          >
             Viewing as {name}
           </span>
-          <span className="ml-auto text-slate-400">{currentPlaybackSec}s</span>
+          <span className={`ml-auto ${mobileOverlay ? "text-white/60" : "text-slate-400"}`}>{currentPlaybackSec}s</span>
         </div>
       </div>
 
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4">
+      <div
+        ref={listRef}
+        className={`min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 ${
+          mobileOverlay ? "bg-[linear-gradient(180deg,rgba(9,14,28,0.18),rgba(9,14,28,0.62))]" : ""
+        }`}
+      >
         {mergedVisibleMessages.map((m) => (
-          <div key={m.key} className="rounded-xl bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <div
+            key={m.key}
+            className={`rounded-xl px-3 py-2.5 ${
+              mobileOverlay
+                ? "bg-[rgba(15,23,42,0.55)] shadow-[0_8px_24px_rgba(2,6,23,0.25)] backdrop-blur-sm"
+                : "bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+            }`}
+          >
             <div className="flex items-baseline gap-2 text-[13px] leading-5">
               <span
                 className={
                   m.type === "ai"
                     ? "font-semibold text-[#0e72ed]"
                     : m.type === "system"
-                    ? "font-semibold text-slate-500"
+                    ? mobileOverlay
+                      ? "font-semibold text-white/65"
+                      : "font-semibold text-slate-500"
+                    : mobileOverlay
+                    ? "font-semibold text-white"
                     : "font-semibold text-slate-900"
                 }
               >
                 {m.senderName}
               </span>
-              <span className="text-[11px] text-slate-400">
+              <span className={`text-[11px] ${mobileOverlay ? "text-white/45" : "text-slate-400"}`}>
                 {timeFormatter.format(new Date(m.sortMs))}
               </span>
             </div>
             <span
-              className={`block text-[13px] leading-5 ${m.type === "system" ? "text-slate-500" : "text-slate-900"}`}
+              className={`block text-[13px] leading-5 ${
+                m.type === "system"
+                  ? mobileOverlay
+                    ? "text-white/65"
+                    : "text-slate-500"
+                  : mobileOverlay
+                  ? "text-white"
+                  : "text-slate-900"
+              }`}
             >
               {m.text}
             </span>
           </div>
         ))}
         {mergedVisibleMessages.length === 0 ? (
-          <div className="text-sm text-slate-500">No messages yet.</div>
+          <div className={`text-sm ${mobileOverlay ? "text-white/65" : "text-slate-500"}`}>No messages yet.</div>
         ) : null}
       </div>
 
-      <div className="border-t border-slate-200 bg-white p-3">
-        <div className="mb-2 text-[11px] text-slate-500">
-          Send to: <span className="font-medium text-slate-700">Everyone</span>
+      <div
+        className={`p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3 ${
+          mobileOverlay
+            ? "border-t border-white/10 bg-[rgba(9,14,28,0.72)] backdrop-blur-xl"
+            : "border-t border-slate-200 bg-white"
+        }`}
+      >
+        <div className={`mb-2 text-[11px] ${mobileOverlay ? "text-white/65" : "text-slate-500"}`}>
+          Send to: <span className={`font-medium ${mobileOverlay ? "text-white" : "text-slate-700"}`}>Everyone</span>
         </div>
         <div className="flex gap-2">
           <input
-            className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+            className={`flex-1 rounded-xl px-3 py-2 text-sm ${
+              mobileOverlay
+                ? "border border-white/15 bg-white/10 text-white placeholder:text-white/45"
+                : "border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
+            }`}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Type message here..."

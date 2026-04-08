@@ -39,6 +39,11 @@ function readAutoJoinSetting(): boolean {
   return window.localStorage.getItem("webinar_auto_join_audio") === "true";
 }
 
+function shouldDefaultChatOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  return !window.matchMedia("(max-width: 767px)").matches;
+}
+
 export default function LiveRoom({
   accessToken,
   webinarId,
@@ -60,11 +65,23 @@ export default function LiveRoom({
 
   const [isAudioJoined, setIsAudioJoined] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
-  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(() => shouldDefaultChatOpen());
   const [autoJoinEnabled, setAutoJoinEnabled] = useState(() => readAutoJoinSetting());
   const [joinModalOpen, setJoinModalOpen] = useState(() => !readAutoJoinSetting());
   const [playbackSec, setPlaybackSec] = useState(clamp(initialPlaybackSec, 0, durationSec));
   const [accessRevoked, setAccessRevoked] = useState(initialAccessRevoked);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(max-width: 767px)");
+    const syncViewport = () => setIsMobileViewport(media.matches);
+
+    syncViewport();
+    media.addEventListener("change", syncViewport);
+    return () => media.removeEventListener("change", syncViewport);
+  }, []);
 
   useEffect(() => {
     if (!accessRevoked || typeof window === "undefined") return;
@@ -231,8 +248,10 @@ export default function LiveRoom({
         setAutoJoinEnabled={setAutoJoinEnabled}
       />
 
-      <div className="relative flex h-full min-h-0">
-        <section className="relative min-h-0 flex-1 bg-[#111827] pb-16">
+      <div className="relative flex h-full min-h-0 md:flex-row">
+        <section
+          className="relative min-h-0 flex-1 bg-[#111827] pb-16"
+        >
           <video
             ref={videoRef}
             className="h-full w-full bg-black object-contain"
@@ -284,7 +303,13 @@ export default function LiveRoom({
         </section>
 
         {isChatOpen ? (
-          <aside className="absolute inset-y-0 right-0 z-20 w-full border-l border-slate-200 bg-white md:w-[340px] lg:relative lg:w-[360px] lg:pb-16">
+          <aside
+            className={`${
+              isMobileViewport
+                ? "absolute inset-x-0 bottom-16 z-30 top-[36%]"
+                : "relative z-30 min-h-0 bg-white md:inset-y-0 md:right-0 md:left-auto md:z-20 md:w-[340px] md:flex-none md:border-l md:border-slate-200 lg:relative lg:w-[360px] lg:pb-16"
+            }`}
+          >
             <CombinedChatStream
               className="h-full"
               accessToken={accessToken}
@@ -295,18 +320,19 @@ export default function LiveRoom({
               initialDisplayName={displayName}
               title="Chat"
               onRequestClose={() => setIsChatOpen(false)}
+              mobileOverlay={isMobileViewport}
             />
           </aside>
         ) : null}
       </div>
 
       <ZoomBottomBar
-        viewerCount={viewerCount}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen((v) => !v)}
         isMuted={isMuted}
         onToggleMute={toggleMute}
         onLeave={() => router.push(`/w/${webinarSlug}`)}
+        className={isMobileViewport && isChatOpen ? "hidden" : undefined}
       />
     </main>
   );
