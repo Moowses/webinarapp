@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".m4v"]);
 
 function sanitizeSegment(value: string): string {
@@ -44,7 +44,10 @@ export async function POST(request: Request) {
     }
 
     if (file.size > MAX_UPLOAD_BYTES) {
-      return NextResponse.json({ error: "file is too large" }, { status: 413 });
+      return NextResponse.json(
+        { error: "file is too large. Maximum upload size is 1 GB. Compress the video and try again." },
+        { status: 413 }
+      );
     }
 
     if (!file.type.startsWith("video/")) {

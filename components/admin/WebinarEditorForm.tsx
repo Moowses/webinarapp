@@ -426,14 +426,17 @@ export default function WebinarEditorForm({
                   onFileSelect(event.dataTransfer.files?.[0] ?? null);
                 }}
               >
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[#1F2A37]">Video Upload</p>
-                    <p className="mt-1 text-sm text-[#6B7280]">
-                      Drag and drop an MP4/WebM/MOV file or browse from your computer.
-                    </p>
-                  </div>
-                  <button
+	                <div className="flex flex-wrap items-center justify-between gap-4">
+	                  <div>
+	                    <p className="text-sm font-semibold text-[#1F2A37]">Video Upload</p>
+	                    <p className="mt-1 text-sm text-[#6B7280]">
+	                      Drag and drop an MP4/WebM/MOV file or browse from your computer.
+	                    </p>
+	                    <p className="mt-2 text-xs text-[#6B7280]">
+	                      Maximum upload size: 1 GB. If your video is larger than 1 GB, compress it before uploading.
+	                    </p>
+	                  </div>
+	                  <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm text-[#2F6FA3] transition hover:bg-[#F0F7FF]"
@@ -746,7 +749,12 @@ export default function WebinarEditorForm({
         </div>
       </form>
 
-      <AdminLoadingModal open={Boolean(loadingMessage)} message={loadingMessage ?? ""} />
+	      <AdminLoadingModal
+	        open={Boolean(loadingMessage)}
+	        message={loadingMessage ?? ""}
+	        progress={isUploading ? uploadProgress : null}
+	        progressLabel={isUploading ? uploadStatus || "Uploading video..." : null}
+	      />
       <AdminSuccessToast message={successToast} />
       <AdminErrorToast message={errorToast} />
       <AdminStickySaveBar
