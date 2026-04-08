@@ -115,6 +115,13 @@ export default function AdminDashboardClient({
               </button>
             );
           })}
+          <Link
+            href="/admin/settings"
+            className="block w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-left text-[#1F2A37] transition hover:bg-[#F8FBFF]"
+          >
+            <div className="text-xs uppercase tracking-[0.18em] text-[#6B7280]">Branding and tab</div>
+            <div className="mt-1 text-sm font-semibold">Settings</div>
+          </Link>
         </div>
       </aside>
 
@@ -199,6 +206,11 @@ export default function AdminDashboardClient({
                     description="Open webinar tools to upload scripted chat replay."
                     onClick={() => setActive("webinars")}
                     variant="accent"
+                  />
+                  <QuickAction
+                    title="Site settings"
+                    description="Change tab title and favicon."
+                    href="/admin/settings"
                   />
                 </div>
               </section>
