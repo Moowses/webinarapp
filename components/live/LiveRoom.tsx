@@ -248,9 +248,11 @@ export default function LiveRoom({
         setAutoJoinEnabled={setAutoJoinEnabled}
       />
 
-      <div className="relative flex h-full min-h-0 md:flex-row">
+      <div className="relative flex h-full min-h-0 flex-col md:flex-row">
         <section
-          className="relative min-h-0 flex-1 bg-[#111827] pb-16"
+          className={`relative min-h-0 bg-[#111827] ${
+            isMobileViewport ? (isChatOpen ? "basis-[40%] pb-0" : "flex-1 pb-16") : "flex-1 pb-16"
+          }`}
         >
           <video
             ref={videoRef}
@@ -282,10 +284,6 @@ export default function LiveRoom({
               </span>
             </div>
           </div>
-          <div className="pointer-events-none absolute bottom-20 left-4 rounded-2xl bg-black/65 px-3 py-2 text-xs backdrop-blur">
-            <div className="font-semibold text-white">Speaker</div>
-            <div className="mt-0.5 text-slate-300">{webinarTitle}</div>
-          </div>
           <div className="absolute bottom-20 right-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-200">
             <span className="rounded-full border border-slate-600 bg-black/60 px-2.5 py-1">
               TZ <span className="font-mono">{timezoneGroupKey}</span>
@@ -306,7 +304,7 @@ export default function LiveRoom({
           <aside
             className={`${
               isMobileViewport
-                ? "absolute inset-x-0 bottom-16 z-30 top-[36%]"
+                ? "relative z-30 min-h-0 basis-[60%] bg-white"
                 : "relative z-30 min-h-0 bg-white md:inset-y-0 md:right-0 md:left-auto md:z-20 md:w-[340px] md:flex-none md:border-l md:border-slate-200 lg:relative lg:w-[360px] lg:pb-16"
             }`}
           >
@@ -320,7 +318,7 @@ export default function LiveRoom({
               initialDisplayName={displayName}
               title="Chat"
               onRequestClose={() => setIsChatOpen(false)}
-              mobileOverlay={isMobileViewport}
+              mobileOverlay={false}
             />
           </aside>
         ) : null}
