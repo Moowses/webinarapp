@@ -380,7 +380,7 @@ export default function CombinedChatStream({
         className={`p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3 ${
           mobileOverlay
             ? "border-t border-white/10 bg-[rgba(9,14,28,0.72)] backdrop-blur-xl"
-            : "border-t border-slate-200 bg-white"
+            : "sticky bottom-0 border-t border-slate-200 bg-white"
         }`}
       >
         <div className={`mb-2 text-[11px] ${mobileOverlay ? "text-white/65" : "text-slate-500"}`}>

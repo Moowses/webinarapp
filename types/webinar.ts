@@ -1,7 +1,13 @@
+export type WebinarScheduleDayTime = {
+  dayOfWeek: number;
+  time: string;
+};
+
 export type WebinarSchedule = {
   timezoneBase: string;
   daysOfWeek: number[];
   times: string[];
+  dayTimes?: WebinarScheduleDayTime[];
   liveWindowMinutes: number;
 };
 

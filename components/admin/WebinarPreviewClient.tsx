@@ -35,8 +35,11 @@ function formatSec(value: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function formatSchedule(days: number[], times: string[]) {
+function formatSchedule(days: number[], times: string[], dayTimes?: Array<{ dayOfWeek: number; time: string }>) {
   const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  if (dayTimes && dayTimes.length > 0) {
+    return dayTimes.map((entry) => `${labels[entry.dayOfWeek] ?? entry.dayOfWeek} at ${entry.time}`).join(", ");
+  }
   return `${days.map((day) => labels[day] ?? day).join(", ")} at ${times.join(", ")}`;
 }
 
@@ -368,7 +371,10 @@ export default function WebinarPreviewClient({ webinar }: Props) {
         <AdminCard>
           <h3 className="text-lg font-semibold text-[#1F2A37]">Webinar Timing Validation</h3>
           <div className="mt-4 space-y-3 text-sm text-[#1F2A37]">
-            <InfoRow label="Configured local schedule" value={formatSchedule(webinar.schedule.daysOfWeek, webinar.schedule.times)} />
+            <InfoRow
+              label="Configured local schedule"
+              value={formatSchedule(webinar.schedule.daysOfWeek, webinar.schedule.times, webinar.schedule.dayTimes)}
+            />
             <InfoRow label="Webinar duration" value={`${webinar.durationSec}s`} />
             <InfoRow label="Late join grace" value={`${webinar.lateGraceMinutes} min`} />
             <InfoRow label="Live window" value={`${webinar.schedule.liveWindowMinutes} min`} />
@@ -429,7 +435,15 @@ export default function WebinarPreviewClient({ webinar }: Props) {
             <InfoRow label="chatbot enabled" value={webinar.bot.enabled ? "yes" : "no"} />
             <InfoRow label="redirect enabled" value={webinar.redirect.enabled ? "yes" : "no"} />
             <InfoRow label="schedule days" value={webinar.schedule.daysOfWeek.join(", ")} mono />
-            <InfoRow label="schedule time" value={webinar.schedule.times.join(", ")} mono />
+            <InfoRow
+              label="schedule time"
+              value={
+                webinar.schedule.dayTimes?.length
+                  ? webinar.schedule.dayTimes.map((entry) => `${entry.dayOfWeek}:${entry.time}`).join(", ")
+                  : webinar.schedule.times.join(", ")
+              }
+              mono
+            />
             <InfoRow label="current preview timestamp" value={formatSec(currentTime)} mono />
             <InfoRow label="session timezone used" value={timezone} mono />
             <InfoRow label="playback state" value={isPlaying ? "playing" : "paused"} />

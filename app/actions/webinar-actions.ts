@@ -9,6 +9,7 @@ import type {
   WebinarRegistrationPageConfig,
   WebinarRedirectConfig,
   WebinarSchedule,
+  WebinarScheduleDayTime,
   WebinarWebhook,
 } from "@/types/webinar";
 
@@ -243,6 +244,49 @@ function fromLegacyScheduleFields(input: WebinarInput): Partial<WebinarSchedule>
   return next;
 }
 
+function normalizeDayTimeEntries(value: unknown): WebinarScheduleDayTime[] {
+  if (!Array.isArray(value)) return [];
+
+  const byDay = new Map<number, string>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+    const dayOfWeek = Number(raw.dayOfWeek);
+    const time = toCleanString(raw.time);
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) continue;
+    if (!TIME_REGEX.test(time)) continue;
+    byDay.set(dayOfWeek, time);
+  }
+
+  return [...byDay.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([dayOfWeek, time]) => ({ dayOfWeek, time }));
+}
+
+function deriveDayTimeEntries(daysOfWeek: number[], times: string[]): WebinarScheduleDayTime[] {
+  const uniqueDays = [...new Set(daysOfWeek)]
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    .sort((a, b) => a - b);
+  const uniqueTimes = [...new Set(times)].map((time) => String(time).trim()).filter(Boolean);
+  if (uniqueDays.length === 0 || uniqueTimes.length === 0) return [];
+
+  if (uniqueTimes.length === 1) {
+    return uniqueDays.map((dayOfWeek) => ({ dayOfWeek, time: uniqueTimes[0] }));
+  }
+
+  return uniqueDays.map((dayOfWeek, index) => ({
+    dayOfWeek,
+    time: uniqueTimes[Math.min(index, uniqueTimes.length - 1)],
+  }));
+}
+
+function scheduleEntriesFromSchedule(schedule: WebinarSchedule): WebinarScheduleDayTime[] {
+  const explicitEntries = normalizeDayTimeEntries(schedule.dayTimes);
+  if (explicitEntries.length > 0) return explicitEntries;
+  return deriveDayTimeEntries(schedule.daysOfWeek, schedule.times);
+}
+
 function parseInput(formDataOrTypedInput: FormData | WebinarInput): WebinarInput {
   if (formDataOrTypedInput instanceof FormData) {
     const days = formDataOrTypedInput.getAll("schedule.daysOfWeek");
@@ -250,6 +294,16 @@ function parseInput(formDataOrTypedInput: FormData | WebinarInput): WebinarInput
     const webhookEnabledValues = formDataOrTypedInput.getAll("webhook.enabled");
     const redirectEnabledValues = formDataOrTypedInput.getAll("redirect.enabled");
     const botEnabledValues = formDataOrTypedInput.getAll("bot.enabled");
+
+    const dayTimes = Array.from(formDataOrTypedInput.entries())
+      .filter(([key]) => key.startsWith("schedule.dayTimes."))
+      .map(([key, value]) => {
+        const dayOfWeek = Number(key.replace("schedule.dayTimes.", ""));
+        return {
+          dayOfWeek,
+          time: typeof value === "string" ? value : String(value ?? ""),
+        };
+      });
 
     return {
       title: formDataOrTypedInput.get("title"),
@@ -290,6 +344,7 @@ function parseInput(formDataOrTypedInput: FormData | WebinarInput): WebinarInput
         timezoneBase:
           formDataOrTypedInput.get("schedule.timezoneBase") ??
           formDataOrTypedInput.get("timezoneBase"),
+        dayTimes,
         daysOfWeek: days.length
           ? days
           : formDataOrTypedInput.get("daysOfWeek") ?? formDataOrTypedInput.get("schedule.daysOfWeek"),
@@ -702,6 +757,10 @@ function normalizeSchedule(input: WebinarInput, existing?: WebinarSchedule): Web
   const timezoneBase = toCleanString(
     scheduleInput.timezoneBase ?? input.timezoneBase ?? existing?.timezoneBase ?? DEFAULT_TIMEZONE_BASE
   );
+  const normalizedExistingDayTimes = existing ? scheduleEntriesFromSchedule(existing) : [];
+  const dayTimes = normalizeDayTimeEntries(
+    scheduleInput.dayTimes ?? normalizedExistingDayTimes
+  );
   const daysOfWeek = toWeekdayArray(
     scheduleInput.daysOfWeek ?? input.daysOfWeek ?? legacy.daysOfWeek ?? existing?.daysOfWeek ?? []
   );
@@ -717,6 +776,16 @@ function normalizeSchedule(input: WebinarInput, existing?: WebinarSchedule): Web
     ) ?? DEFAULT_LIVE_WINDOW_MINUTES;
 
   if (!timezoneBase) throw new Error("schedule.timezoneBase is required");
+  if (dayTimes.length > 0) {
+    return {
+      timezoneBase,
+      daysOfWeek: dayTimes.map((entry) => entry.dayOfWeek),
+      times: dayTimes.map((entry) => entry.time),
+      dayTimes,
+      liveWindowMinutes,
+    };
+  }
+
   if (daysOfWeek.length === 0) throw new Error("schedule.daysOfWeek must contain at least one day");
   if (times.length === 0) throw new Error("schedule.times must contain at least one time");
   for (const time of times) {
@@ -725,10 +794,12 @@ function normalizeSchedule(input: WebinarInput, existing?: WebinarSchedule): Web
     }
   }
 
+  const fallbackDayTimes = deriveDayTimeEntries(daysOfWeek, times);
   return {
     timezoneBase,
     daysOfWeek,
     times: [...new Set(times)],
+    dayTimes: fallbackDayTimes,
     liveWindowMinutes,
   };
 }
@@ -738,11 +809,14 @@ function asLegacySchedule(schedule: WebinarSchedule): {
   scheduleLocalTime: string;
   scheduleWeekday?: number;
 } {
-  const daily = schedule.daysOfWeek.length === 7;
+  const entries = scheduleEntriesFromSchedule(schedule);
+  const daysOfWeek = entries.length > 0 ? entries.map((entry) => entry.dayOfWeek) : schedule.daysOfWeek;
+  const times = entries.length > 0 ? entries.map((entry) => entry.time) : schedule.times;
+  const daily = daysOfWeek.length === 7;
   return {
     scheduleType: daily ? "daily" : "weekly",
-    scheduleLocalTime: schedule.times[0] ?? "20:00",
-    scheduleWeekday: daily ? undefined : schedule.daysOfWeek[0],
+    scheduleLocalTime: times[0] ?? "20:00",
+    scheduleWeekday: daily ? undefined : daysOfWeek[0],
   };
 }
 
@@ -790,6 +864,7 @@ function parseStoredSchedule(raw: FirebaseFirestore.DocumentData): WebinarSchedu
     {
       schedule: {
         timezoneBase: fromObject.timezoneBase ?? DEFAULT_TIMEZONE_BASE,
+        dayTimes: fromObject.dayTimes ?? [],
         daysOfWeek: fromObject.daysOfWeek ?? fallbackDays,
         times: fromObject.times ?? fallbackTimes,
         liveWindowMinutes: fromObject.liveWindowMinutes ?? DEFAULT_LIVE_WINDOW_MINUTES,

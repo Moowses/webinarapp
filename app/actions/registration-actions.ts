@@ -121,11 +121,67 @@ function hasPassedToday(
   return nowMinute >= targetMinute;
 }
 
+function getScheduleEntries(input: {
+  daysOfWeek: number[];
+  times: string[];
+  dayTimes?: unknown;
+}) {
+  if (Array.isArray(input.dayTimes)) {
+    const entries = input.dayTimes
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const raw = entry as Record<string, unknown>;
+        const dayOfWeek = Number(raw.dayOfWeek);
+        const time = String(raw.time ?? "").trim();
+        const parsed = parseLocalTimeHHMM(time);
+        if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6 || !parsed) return null;
+        return { dayOfWeek, time, parsed };
+      })
+      .filter(
+        (entry): entry is { dayOfWeek: number; time: string; parsed: { hour: number; minute: number } } =>
+          entry !== null
+      );
+
+    if (entries.length > 0) {
+      const byDay = new Map<number, { dayOfWeek: number; time: string; parsed: { hour: number; minute: number } }>();
+      for (const entry of entries) byDay.set(entry.dayOfWeek, entry);
+      return [...byDay.values()].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+    }
+  }
+
+  const days = [...new Set(input.daysOfWeek)]
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    .sort((a, b) => a - b);
+  const parsedTimes = [...new Set(input.times)]
+    .map((time) => ({ raw: String(time).trim(), parsed: parseLocalTimeHHMM(String(time).trim()) }))
+    .filter((entry) => entry.parsed !== null) as Array<{
+    raw: string;
+    parsed: { hour: number; minute: number };
+  }>;
+
+  if (days.length === 0 || parsedTimes.length === 0) return [];
+
+  if (parsedTimes.length === 1) {
+    return days.map((dayOfWeek) => ({
+      dayOfWeek,
+      time: parsedTimes[0].raw,
+      parsed: parsedTimes[0].parsed,
+    }));
+  }
+
+  return days.map((dayOfWeek, index) => {
+    const matched = parsedTimes[Math.min(index, parsedTimes.length - 1)];
+    return { dayOfWeek, time: matched.raw, parsed: matched.parsed };
+  });
+}
+
 function computeNextScheduledOccurrence(input: {
   now: Date;
   userTimeZone: string;
   daysOfWeek: number[];
   times: string[];
+  dayTimes?: unknown;
   durationSec: number;
   liveWindowMinutes: number;
 }): ScheduledOccurrence {
@@ -139,50 +195,36 @@ function computeNextScheduledOccurrence(input: {
     throw new Error("Invalid webinar schedule.liveWindowMinutes");
   }
 
-  const days = [...new Set(input.daysOfWeek)]
-    .map((day) => Number(day))
-    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
-  if (days.length === 0) {
-    throw new Error("Invalid webinar schedule.daysOfWeek");
-  }
-
-  const parsedTimes = [...new Set(input.times)]
-    .map((time) => ({ raw: String(time).trim(), parsed: parseLocalTimeHHMM(String(time).trim()) }))
-    .filter((entry) => entry.parsed !== null) as Array<{
-    raw: string;
-    parsed: { hour: number; minute: number };
-  }>;
-  if (parsedTimes.length === 0) {
-    throw new Error("Invalid webinar schedule.times");
+  const entries = getScheduleEntries(input);
+  if (entries.length === 0) {
+    throw new Error("Invalid webinar schedule.dayTimes");
   }
 
   const baseNow = getZonedParts(input.now, input.userTimeZone);
   let nextStart: Date | null = null;
 
-  for (const day of days) {
-    for (const entry of parsedTimes) {
-      let daysAhead = (day - baseNow.weekday + 7) % 7;
-      if (
-        daysAhead === 0 &&
-        hasPassedToday(baseNow.hour, baseNow.minute, entry.parsed.hour, entry.parsed.minute)
-      ) {
-        daysAhead = 7;
-      }
+  for (const entry of entries) {
+    let daysAhead = (entry.dayOfWeek - baseNow.weekday + 7) % 7;
+    if (
+      daysAhead === 0 &&
+      hasPassedToday(baseNow.hour, baseNow.minute, entry.parsed.hour, entry.parsed.minute)
+    ) {
+      daysAhead = 7;
+    }
 
-      const targetDay = addDaysYMD(baseNow.year, baseNow.month, baseNow.day, daysAhead);
-      const candidate = zonedDateTimeToUtcDate({
-        timeZone: input.userTimeZone,
-        year: targetDay.year,
-        month: targetDay.month,
-        day: targetDay.day,
-        hour: entry.parsed.hour,
-        minute: entry.parsed.minute,
-        second: 0,
-      });
+    const targetDay = addDaysYMD(baseNow.year, baseNow.month, baseNow.day, daysAhead);
+    const candidate = zonedDateTimeToUtcDate({
+      timeZone: input.userTimeZone,
+      year: targetDay.year,
+      month: targetDay.month,
+      day: targetDay.day,
+      hour: entry.parsed.hour,
+      minute: entry.parsed.minute,
+      second: 0,
+    });
 
-      if (!nextStart || candidate.getTime() < nextStart.getTime()) {
-        nextStart = candidate;
-      }
+    if (!nextStart || candidate.getTime() < nextStart.getTime()) {
+      nextStart = candidate;
     }
   }
 
@@ -237,6 +279,7 @@ async function getWebinarBySlug(slug: string): Promise<{
     Array.isArray(scheduleRaw.times) && scheduleRaw.times.length > 0
       ? scheduleRaw.times.map((time) => String(time).trim()).filter(Boolean)
       : [String(raw.scheduleLocalTime ?? "20:00")];
+  const dayTimes = Array.isArray(scheduleRaw.dayTimes) ? scheduleRaw.dayTimes : [];
 
   const liveWindowMinutes =
     Number.isFinite(scheduleRaw.liveWindowMinutes) && Number(scheduleRaw.liveWindowMinutes) > 0
@@ -254,6 +297,7 @@ async function getWebinarBySlug(slug: string): Promise<{
         timezoneBase: String(scheduleRaw.timezoneBase ?? "Asia/Manila"),
         daysOfWeek,
         times,
+        dayTimes,
         liveWindowMinutes,
       },
       webhook:
@@ -288,6 +332,7 @@ export async function registerForWebinarAction(input: RegisterForWebinarInput) {
       userTimeZone: input.userTimeZone,
       daysOfWeek: webinar.data.schedule.daysOfWeek,
       times: webinar.data.schedule.times,
+      dayTimes: webinar.data.schedule.dayTimes,
       durationSec: webinar.data.durationSec,
       liveWindowMinutes: webinar.data.schedule.liveWindowMinutes,
     }

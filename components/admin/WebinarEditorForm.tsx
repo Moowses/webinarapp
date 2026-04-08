@@ -20,6 +20,7 @@ type WebinarFormData = {
     timezoneBase: string;
     daysOfWeek: number[];
     times: string[];
+    dayTimes?: Array<{ dayOfWeek: number; time: string }>;
     liveWindowMinutes: number;
   };
   webhook: {
@@ -137,6 +138,21 @@ export default function WebinarEditorForm({
   const [isDragActive, setIsDragActive] = useState(false);
   const [sessionUploadedVideoPath, setSessionUploadedVideoPath] = useState<string | null>(null);
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(Boolean(initial.slug));
+  const initialScheduleByDay = useMemo(() => {
+    const fromEntries = (initial.schedule.dayTimes ?? []).reduce<Record<number, string>>((acc, entry) => {
+      acc[entry.dayOfWeek] = entry.time;
+      return acc;
+    }, {});
+    if (Object.keys(fromEntries).length > 0) return fromEntries;
+
+    const fallbackTimes = initial.schedule.times.length > 0 ? initial.schedule.times : ["20:00"];
+    return initial.schedule.daysOfWeek.reduce<Record<number, string>>((acc, day, index) => {
+      acc[day] = fallbackTimes[Math.min(index, fallbackTimes.length - 1)] ?? "20:00";
+      return acc;
+    }, {});
+  }, [initial.schedule.dayTimes, initial.schedule.daysOfWeek, initial.schedule.times]);
+  const [selectedDays, setSelectedDays] = useState<number[]>(initial.schedule.daysOfWeek);
+  const [scheduleTimesByDay, setScheduleTimesByDay] = useState<Record<number, string>>(initialScheduleByDay);
 
   const mustUploadFirst = Boolean(selectedFile) && uploadStatus !== "Uploaded successfully";
   const uploadButtonDisabled = !selectedFile || isUploading;
@@ -177,6 +193,35 @@ export default function WebinarEditorForm({
 
   function markDirty() {
     setHasUnsavedChanges(true);
+  }
+
+  function toggleScheduleDay(dayOfWeek: number, checked: boolean) {
+    setSelectedDays((current) => {
+      if (checked) {
+        return [...new Set([...current, dayOfWeek])].sort((a, b) => a - b);
+      }
+      return current.filter((day) => day !== dayOfWeek);
+    });
+    setScheduleTimesByDay((current) => {
+      if (checked) {
+        return {
+          ...current,
+          [dayOfWeek]: current[dayOfWeek] || initialScheduleByDay[dayOfWeek] || initial.schedule.times[0] || "20:00",
+        };
+      }
+      const next = { ...current };
+      delete next[dayOfWeek];
+      return next;
+    });
+    markDirty();
+  }
+
+  function updateScheduleDayTime(dayOfWeek: number, value: string) {
+    setScheduleTimesByDay((current) => ({
+      ...current,
+      [dayOfWeek]: value,
+    }));
+    markDirty();
   }
 
   function readVideoDuration(file: File) {
@@ -592,7 +637,8 @@ export default function WebinarEditorForm({
                         type="checkbox"
                         name="schedule.daysOfWeek"
                         value={String(opt.value)}
-                        defaultChecked={initial.schedule.daysOfWeek.includes(opt.value)}
+                        checked={selectedDays.includes(opt.value)}
+                        onChange={(event) => toggleScheduleDay(opt.value, event.target.checked)}
                       />
                       {opt.label}
                     </label>
@@ -600,16 +646,33 @@ export default function WebinarEditorForm({
                 </div>
               </fieldset>
 
-              <label className="mt-5 block text-sm text-[#1F2A37]">
-                Times (HH:mm, comma-separated)
-                <input
-                  name="schedule.times"
-                  required
-                  defaultValue={initial.schedule.times.join(", ")}
-                  placeholder="20:00"
-                  className={inputClass}
-                />
-              </label>
+              <div className="mt-5 space-y-4">
+                <div className="text-sm font-medium text-[#1F2A37]">Schedule times by day</div>
+                {selectedDays.length > 0 ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {selectedDays.map((dayOfWeek) => {
+                      const option = weekdayOptions.find((item) => item.value === dayOfWeek);
+                      return (
+                        <label key={dayOfWeek} className="block text-sm text-[#1F2A37]">
+                          {option?.label ?? `Day ${dayOfWeek}`} time
+                          <input
+                            type="time"
+                            name={`schedule.dayTimes.${dayOfWeek}`}
+                            required
+                            value={scheduleTimesByDay[dayOfWeek] ?? ""}
+                            onChange={(event) => updateScheduleDayTime(dayOfWeek, event.target.value)}
+                            className={inputClass}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm text-[#6B7280]">
+                    Select at least one day to assign a local start time.
+                  </div>
+                )}
+              </div>
             </AdminSection>
           </div>
 

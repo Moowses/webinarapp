@@ -41,7 +41,7 @@ function readAutoJoinSetting(): boolean {
 
 function shouldDefaultChatOpen(): boolean {
   if (typeof window === "undefined") return true;
-  return !window.matchMedia("(max-width: 767px)").matches;
+  return !window.matchMedia("(max-width: 767px), ((max-height: 500px) and (pointer: coarse))").matches;
 }
 
 export default function LiveRoom({
@@ -75,7 +75,7 @@ export default function LiveRoom({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const media = window.matchMedia("(max-width: 767px)");
+    const media = window.matchMedia("(max-width: 767px), ((max-height: 500px) and (pointer: coarse))");
     const syncViewport = () => setIsMobileViewport(media.matches);
 
     syncViewport();
@@ -226,7 +226,7 @@ export default function LiveRoom({
   }, [playbackSec]);
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden bg-[#0b0f19] text-slate-100">
+    <main className="relative h-[100dvh] w-screen overflow-hidden bg-[#0b0f19] text-slate-100 md:h-screen">
       {accessRevoked ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-red-500/40 bg-[#121826] p-6 text-center shadow-2xl">
@@ -251,7 +251,7 @@ export default function LiveRoom({
       <div className="relative flex h-full min-h-0 flex-col md:flex-row">
         <section
           className={`relative min-h-0 bg-[#111827] ${
-            isMobileViewport ? (isChatOpen ? "basis-[40%] pb-0" : "flex-1 pb-16") : "flex-1 pb-16"
+            isMobileViewport ? (isChatOpen ? "basis-[40dvh] pb-0" : "flex-1 pb-16") : "flex-1 pb-16"
           }`}
         >
           <video
@@ -304,7 +304,7 @@ export default function LiveRoom({
           <aside
             className={`${
               isMobileViewport
-                ? "relative z-30 min-h-0 basis-[60%] bg-white"
+                ? "relative z-30 min-h-0 flex-1 bg-white"
                 : "relative z-30 min-h-0 bg-white md:inset-y-0 md:right-0 md:left-auto md:z-20 md:w-[340px] md:flex-none md:border-l md:border-slate-200 lg:relative lg:w-[360px] lg:pb-16"
             }`}
           >

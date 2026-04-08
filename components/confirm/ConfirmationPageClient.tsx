@@ -39,42 +39,69 @@ function hasPassedToday(nowHour: number, nowMinute: number, targetHour: number, 
   return nowMinute >= targetMinute;
 }
 
+function getScheduleEntries(schedule: WebinarSchedule) {
+  const explicitEntries = Array.isArray(schedule.dayTimes)
+    ? schedule.dayTimes
+        .map((entry) => {
+          const dayOfWeek = Number(entry.dayOfWeek);
+          const time = String(entry.time ?? "").trim();
+          const parsed = parseLocalTimeHHMM(time);
+          if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6 || !parsed) return null;
+          return { dayOfWeek, parsed };
+        })
+        .filter((entry): entry is { dayOfWeek: number; parsed: { hour: number; minute: number } } => entry !== null)
+    : [];
+  if (explicitEntries.length > 0) return explicitEntries;
+
+  const days = [...new Set(schedule.daysOfWeek)]
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    .sort((a, b) => a - b);
+  const parsedTimes = [...new Set(schedule.times)]
+    .map((time) => parseLocalTimeHHMM(String(time).trim()))
+    .filter((time): time is { hour: number; minute: number } => time !== null);
+
+  if (days.length === 0 || parsedTimes.length === 0) return [];
+
+  if (parsedTimes.length === 1) {
+    return days.map((dayOfWeek) => ({ dayOfWeek, parsed: parsedTimes[0] }));
+  }
+
+  return days.map((dayOfWeek, index) => ({
+    dayOfWeek,
+    parsed: parsedTimes[Math.min(index, parsedTimes.length - 1)],
+  }));
+}
+
 function computeNextStart(now: Date, schedule: WebinarSchedule, userTimeZone: string) {
   if (!isValidTimeZone(userTimeZone)) {
     throw new Error("Invalid user time zone");
   }
 
-  const days = [...new Set(schedule.daysOfWeek)]
-    .map((day) => Number(day))
-    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
-  const parsedTimes = [...new Set(schedule.times)]
-    .map((time) => parseLocalTimeHHMM(String(time).trim()))
-    .filter((time): time is { hour: number; minute: number } => time !== null);
+  const entries = getScheduleEntries(schedule);
 
   const nowParts = getZonedParts(now, userTimeZone);
   let nextStart: Date | null = null;
 
-  for (const day of days) {
-    for (const time of parsedTimes) {
-      let daysAhead = (day - nowParts.weekday + 7) % 7;
-      if (daysAhead === 0 && hasPassedToday(nowParts.hour, nowParts.minute, time.hour, time.minute)) {
-        daysAhead = 7;
-      }
+  for (const entry of entries) {
+    let daysAhead = (entry.dayOfWeek - nowParts.weekday + 7) % 7;
+    if (daysAhead === 0 && hasPassedToday(nowParts.hour, nowParts.minute, entry.parsed.hour, entry.parsed.minute)) {
+      daysAhead = 7;
+    }
 
-      const targetDay = addDaysYMD(nowParts.year, nowParts.month, nowParts.day, daysAhead);
-      const candidate = zonedDateTimeToUtcDate({
-        timeZone: userTimeZone,
-        year: targetDay.year,
-        month: targetDay.month,
-        day: targetDay.day,
-        hour: time.hour,
-        minute: time.minute,
-        second: 0,
-      });
+    const targetDay = addDaysYMD(nowParts.year, nowParts.month, nowParts.day, daysAhead);
+    const candidate = zonedDateTimeToUtcDate({
+      timeZone: userTimeZone,
+      year: targetDay.year,
+      month: targetDay.month,
+      day: targetDay.day,
+      hour: entry.parsed.hour,
+      minute: entry.parsed.minute,
+      second: 0,
+    });
 
-      if (!nextStart || candidate.getTime() < nextStart.getTime()) {
-        nextStart = candidate;
-      }
+    if (!nextStart || candidate.getTime() < nextStart.getTime()) {
+      nextStart = candidate;
     }
   }
 
