@@ -251,7 +251,7 @@ export default function LiveRoom({
       <div className="relative flex h-full min-h-0 flex-col md:flex-row">
         <section
           className={`relative min-h-0 bg-[#111827] ${
-            isMobileViewport ? (isChatOpen ? "basis-[40dvh] pb-0" : "flex-1 pb-16") : "flex-1 pb-16"
+            isMobileViewport ? (isChatOpen ? "basis-[50dvh] pb-0" : "flex-1 pb-16") : "flex-1 pb-16"
           }`}
         >
           <video
