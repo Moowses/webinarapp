@@ -15,6 +15,10 @@ type PredefinedMessage = {
   text: string;
 };
 
+type HTMLVideoElementWithAudioTracks = HTMLVideoElement & {
+  audioTracks?: { length: number };
+};
+
 function formatSec(value: number) {
   const total = Math.max(0, Math.floor(value));
   const hours = Math.floor(total / 3600);
@@ -77,28 +81,32 @@ export default function WebinarPreviewClient({ webinar }: Props) {
     const video = videoRef.current;
     if (!video) return;
 
-    function onLoadedMetadata() {
+    function onLoadedMetadata(event: Event) {
+      const target = event.currentTarget as HTMLVideoElement | null;
+      if (!target) return;
       setVideoLoaded(true);
-      setDuration(Math.ceil(video.duration || webinar.durationSec));
+      setDuration(Math.ceil(target.duration || webinar.durationSec));
       const audioDetected =
-        "mozHasAudio" in video
-          ? Boolean((video as HTMLVideoElement & { mozHasAudio?: boolean }).mozHasAudio)
-          : "webkitAudioDecodedByteCount" in video
+        "mozHasAudio" in target
+          ? Boolean((target as HTMLVideoElement & { mozHasAudio?: boolean }).mozHasAudio)
+          : "webkitAudioDecodedByteCount" in target
           ? Number(
-              (video as HTMLVideoElement & { webkitAudioDecodedByteCount?: number })
+              (target as HTMLVideoElement & { webkitAudioDecodedByteCount?: number })
                 .webkitAudioDecodedByteCount
             ) > 0
-          : video.audioTracks
-          ? video.audioTracks.length > 0
+          : (target as HTMLVideoElementWithAudioTracks).audioTracks
+          ? ((target as HTMLVideoElementWithAudioTracks).audioTracks?.length ?? 0) > 0
           : null;
       setHasAudio(audioDetected);
     }
 
-    function onTimeUpdate() {
-      setCurrentTime(video.currentTime);
-      setIsPlaying(!video.paused && !video.ended);
-      setIsMuted(video.muted);
-      setVolume(video.volume);
+    function onTimeUpdate(event: Event) {
+      const target = event.currentTarget as HTMLVideoElement | null;
+      if (!target) return;
+      setCurrentTime(target.currentTime);
+      setIsPlaying(!target.paused && !target.ended);
+      setIsMuted(target.muted);
+      setVolume(target.volume);
     }
 
     function onPlay() {
@@ -109,9 +117,11 @@ export default function WebinarPreviewClient({ webinar }: Props) {
       setIsPlaying(false);
     }
 
-    function onVolumeChange() {
-      setIsMuted(video.muted);
-      setVolume(video.volume);
+    function onVolumeChange(event: Event) {
+      const target = event.currentTarget as HTMLVideoElement | null;
+      if (!target) return;
+      setIsMuted(target.muted);
+      setVolume(target.volume);
     }
 
     function onError() {

@@ -18,13 +18,14 @@ export default async function EditWebinarPage({ params, searchParams }: Props) {
   const webinar = await getWebinarAction(webinarId);
 
   if (!webinar) notFound();
+  const webinarSlug = webinar.slug;
 
   async function updateAction(formData: FormData) {
     "use server";
     await updateWebinarAction(webinarId, formData);
     revalidatePath("/admin");
     revalidatePath(`/admin/webinars/${webinarId}`);
-    revalidatePath(`/w/${webinar.slug}`);
+    revalidatePath(`/w/${webinarSlug}`);
     return { ok: true as const };
   }
 
@@ -55,7 +56,7 @@ export default async function EditWebinarPage({ params, searchParams }: Props) {
               Edit confirmation page
             </a>
             <a
-              href={`/confirm-preview/${webinar.slug}`}
+              href={`/confirm-preview/${webinarSlug}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex rounded-lg border border-[#F58220] bg-white px-4 py-2 text-sm text-[#F58220] hover:bg-[#FFF4EA]"

@@ -14,6 +14,7 @@ export default async function EditRegistrationPage({ params }: Props) {
   const webinar = await getWebinarAction(webinarId);
 
   if (!webinar) notFound();
+  const webinarSlug = webinar.slug;
 
   async function updateAction(formData: FormData) {
     "use server";
@@ -38,7 +39,7 @@ export default async function EditRegistrationPage({ params }: Props) {
     revalidatePath("/admin");
     revalidatePath(`/admin/webinars/${webinarId}`);
     revalidatePath(`/admin/webinars/${webinarId}/registration-page`);
-    revalidatePath(`/w/${webinar.slug}`);
+    revalidatePath(`/w/${webinarSlug}`);
     return { ok: true as const };
   }
 
