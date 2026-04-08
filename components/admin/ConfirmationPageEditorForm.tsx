@@ -292,13 +292,13 @@ export default function ConfirmationPageEditorForm({
 	                    name="confirmationPage.mediaUrl"
 	                    value={mediaUrl}
 	                    onChange={(event) => setMediaUrl(event.target.value)}
-	                    placeholder={
-	                      mediaSource === "external"
-	                        ? "https://youtube.com/watch?v=... or https://vimeo.com/..."
-	                        : "Leave blank to use webinar video"
-	                    }
-	                    className={inputClass}
-	                  />
+                    placeholder={
+                      mediaSource === "external"
+                        ? "https://youtube.com/watch?v=... or https://vimeo.com/..."
+                        : "Upload media or paste a direct file URL"
+                    }
+                    className={inputClass}
+                  />
                 </label>
                 <label className="block text-sm text-[#1F2A37]">
                   Media Position

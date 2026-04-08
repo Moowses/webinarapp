@@ -16,7 +16,6 @@ export default async function ConfirmationPreviewPage({ params }: Props) {
     <ConfirmationPageClient
       title={webinar.title}
       slug={webinar.slug}
-      videoPublicPath={webinar.videoPublicPath}
       schedule={webinar.schedule}
       durationSec={webinar.durationSec}
       confirmationPage={webinar.confirmationPage}

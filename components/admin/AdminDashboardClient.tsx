@@ -18,9 +18,10 @@ type Props = {
   activeViewers: ActiveLiveViewerRow[];
 };
 
-type SectionKey = "live-monitor" | "webinars" | "registrants";
+type SectionKey = "dashboard" | "live-monitor" | "webinars" | "registrants";
 
 const navItems: Array<{ key: SectionKey; label: string; eyebrow: string }> = [
+  { key: "dashboard", label: "Dashboard", eyebrow: "Control center" },
   { key: "live-monitor", label: "Live Monitor", eyebrow: "Observe sessions" },
   { key: "webinars", label: "Webinars", eyebrow: "Manage library" },
   { key: "registrants", label: "Registrants", eyebrow: "Attendance and leads" },
@@ -43,7 +44,7 @@ export default function AdminDashboardClient({
   activeSessions,
   activeViewers,
 }: Props) {
-  const [active, setActive] = useState<SectionKey>("webinars");
+  const [active, setActive] = useState<SectionKey>("dashboard");
   const [selectedWebinar, setSelectedWebinar] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -118,106 +119,108 @@ export default function AdminDashboardClient({
       </aside>
 
       <section className="space-y-6">
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_360px]">
-          <div className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Recent Webinars</p>
-                <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Latest webinar activity</h2>
-                <p className="mt-2 text-sm text-[#6B7280]">Updated {formatDateTime(latestUpdate)}.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActive("webinars")}
-                className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]"
-              >
-                View all webinars
-              </button>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {webinars.slice(0, 5).map((webinar) => (
-                <div
-                  key={webinar.webinarId}
-                  className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6EDF3] bg-[#F8FBFF] px-4 py-4"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-[#1F2A37]">{webinar.title || "(Untitled webinar)"}</p>
-                    <p className="mt-1 text-xs text-[#6B7280]">
-                      /{webinar.slug} | Updated {formatDateTime(webinar.updatedAt)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      href={`/admin/webinars/${webinar.webinarId}`}
-                      className="rounded-lg bg-[#2F6FA3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3E82BD]"
-                    >
-                      Edit
-                    </Link>
-                    <Link
-                      href={`/admin/webinars/${webinar.webinarId}/preview`}
-                      className="rounded-lg border border-[#2F6FA3] bg-white px-3 py-1.5 text-xs font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]"
-                    >
-                      Preview
-                    </Link>
-                  </div>
+        {active === "dashboard" ? (
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_360px]">
+            <div className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Recent Webinars</p>
+                  <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Latest webinar activity</h2>
+                  <p className="mt-2 text-sm text-[#6B7280]">Updated {formatDateTime(latestUpdate)}.</p>
                 </div>
-              ))}
-              {webinars.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[#E6EDF3] bg-[#F8FBFF] px-4 py-8 text-sm text-[#6B7280]">
-                  No webinars yet. Create your first webinar to start using the dashboard.
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <section className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Quick Actions</p>
-              <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Move faster</h2>
-              <div className="mt-5 grid gap-3">
-                <QuickAction
-                  title="Create webinar"
-                  description="Set up a new registration and live experience."
-                  href="/admin/webinars/new"
-                  variant="primary"
-                />
-                <QuickAction
-                  title="Open live monitor"
-                  description="Inspect active sessions, viewers, and real-time chat."
-                  onClick={() => setActive("live-monitor")}
-                />
-                <QuickAction
-                  title="View registrants"
-                  description="Filter attendee records by webinar and date."
-                  onClick={() => setActive("registrants")}
-                />
-                <QuickAction
-                  title="Manage predefined chat"
-                  description="Open webinar tools to upload scripted chat replay."
+                <button
+                  type="button"
                   onClick={() => setActive("webinars")}
-                  variant="accent"
-                />
+                  className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]"
+                >
+                  View all webinars
+                </button>
               </div>
-            </section>
 
-            <section className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">System Status</p>
-              <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Readiness snapshot</h2>
               <div className="mt-5 space-y-3">
-                <StatusRow
-                  label="Live sessions"
-                  value={activeSessions.length ? `${activeSessions.length} running` : "No live sessions"}
-                />
-                <StatusRow label="Latest update" value={formatDateTime(latestUpdate)} />
-                <StatusRow
-                  label="Registrants requiring follow-up"
-                  value={`${Math.max(registrants.length - attendedCount, 0)} not yet attended`}
-                />
+                {webinars.slice(0, 5).map((webinar) => (
+                  <div
+                    key={webinar.webinarId}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6EDF3] bg-[#F8FBFF] px-4 py-4"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-[#1F2A37]">{webinar.title || "(Untitled webinar)"}</p>
+                      <p className="mt-1 text-xs text-[#6B7280]">
+                        /{webinar.slug} | Updated {formatDateTime(webinar.updatedAt)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        href={`/admin/webinars/${webinar.webinarId}`}
+                        className="rounded-lg bg-[#2F6FA3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3E82BD]"
+                      >
+                        Edit
+                      </Link>
+                      <Link
+                        href={`/admin/webinars/${webinar.webinarId}/preview`}
+                        className="rounded-lg border border-[#2F6FA3] bg-white px-3 py-1.5 text-xs font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]"
+                      >
+                        Preview
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+                {webinars.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#E6EDF3] bg-[#F8FBFF] px-4 py-8 text-sm text-[#6B7280]">
+                    No webinars yet. Create your first webinar to start using the dashboard.
+                  </div>
+                ) : null}
               </div>
-            </section>
-          </div>
-        </section>
+            </div>
+
+            <div className="space-y-6">
+              <section className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Quick Actions</p>
+                <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Move faster</h2>
+                <div className="mt-5 grid gap-3">
+                  <QuickAction
+                    title="Create webinar"
+                    description="Set up a new registration and live experience."
+                    href="/admin/webinars/new"
+                    variant="primary"
+                  />
+                  <QuickAction
+                    title="Open live monitor"
+                    description="Inspect active sessions, viewers, and real-time chat."
+                    onClick={() => setActive("live-monitor")}
+                  />
+                  <QuickAction
+                    title="View registrants"
+                    description="Filter attendee records by webinar and date."
+                    onClick={() => setActive("registrants")}
+                  />
+                  <QuickAction
+                    title="Manage predefined chat"
+                    description="Open webinar tools to upload scripted chat replay."
+                    onClick={() => setActive("webinars")}
+                    variant="accent"
+                  />
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">System Status</p>
+                <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Readiness snapshot</h2>
+                <div className="mt-5 space-y-3">
+                  <StatusRow
+                    label="Live sessions"
+                    value={activeSessions.length ? `${activeSessions.length} running` : "No live sessions"}
+                  />
+                  <StatusRow label="Latest update" value={formatDateTime(latestUpdate)} />
+                  <StatusRow
+                    label="Registrants requiring follow-up"
+                    value={`${Math.max(registrants.length - attendedCount, 0)} not yet attended`}
+                  />
+                </div>
+              </section>
+            </div>
+          </section>
+        ) : null}
 
         {active === "live-monitor" ? (
           <AdminLiveMonitor sessions={activeSessions} viewers={activeViewers} />

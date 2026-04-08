@@ -40,6 +40,8 @@ type Props = {
 };
 
 const PAGE_SIZE = 200;
+const PREDEFINED_PRELOAD_SEC = 180;
+const PREDEFINED_REFETCH_THRESHOLD_SEC = 30;
 
 export default function CombinedChatStream({
   accessToken,
@@ -66,6 +68,7 @@ export default function CombinedChatStream({
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const currentPlaybackSec = Math.max(0, Math.floor(playbackSec));
+  const highestRequestedUptoSecRef = useRef(-1);
 
   const scheduledStartMs = useMemo(() => new Date(scheduledStartISO).getTime(), [scheduledStartISO]);
   const timelineNowMs = useMemo(
@@ -82,12 +85,14 @@ export default function CombinedChatStream({
   const loadPredefinedPage = useCallback(
     async (targetSec: number) => {
       if (loadingPredefined || !hasMorePredefined) return;
+      const requestUptoSec = Math.max(0, Math.floor(targetSec + PREDEFINED_PRELOAD_SEC));
+      if (cursor && requestUptoSec <= highestRequestedUptoSecRef.current) return;
 
       setLoadingPredefined(true);
       setLoadError(null);
       try {
         const qs = new URLSearchParams();
-        qs.set("uptoSec", String(Math.max(0, Math.floor(targetSec))));
+        qs.set("uptoSec", String(requestUptoSec));
         qs.set("pageSize", String(PAGE_SIZE));
         if (cursor) {
           qs.set("cursorSec", String(cursor.cursorSec));
@@ -107,6 +112,7 @@ export default function CombinedChatStream({
         }
 
         const incoming = json.messages ?? [];
+        highestRequestedUptoSecRef.current = Math.max(highestRequestedUptoSecRef.current, requestUptoSec);
         setPredefinedMessages((prev) => {
           const byId = new Map<string, PredefinedMessage>();
           for (const row of prev) byId.set(row.id, row);
@@ -141,7 +147,7 @@ export default function CombinedChatStream({
 
   useEffect(() => {
     if (loadingPredefined || !hasMorePredefined) return;
-    if (currentPlaybackSec <= maxLoadedPredefinedSec) return;
+    if (currentPlaybackSec + PREDEFINED_REFETCH_THRESHOLD_SEC <= maxLoadedPredefinedSec) return;
     void loadPredefinedPage(currentPlaybackSec);
   }, [currentPlaybackSec, hasMorePredefined, loadPredefinedPage, loadingPredefined, maxLoadedPredefinedSec]);
 

@@ -38,7 +38,6 @@ export default async function ConfirmPage({ params }: Props) {
     <ConfirmationPageClient
       title={webinar.title}
       slug={webinar.slug}
-      videoPublicPath={webinar.videoPublicPath}
       durationSec={webinar.durationSec}
       confirmationPage={webinar.confirmationPage}
       joinHref={`/live/${token}`}

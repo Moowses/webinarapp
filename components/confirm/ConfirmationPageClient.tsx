@@ -14,7 +14,6 @@ import type { WebinarConfirmationPageConfig, WebinarSchedule } from "@/types/web
 type Props = {
   title: string;
   slug: string;
-  videoPublicPath: string;
   schedule?: WebinarSchedule;
   durationSec: number;
   confirmationPage: WebinarConfirmationPageConfig;
@@ -146,7 +145,6 @@ function parseEmbedVideoUrl(url: string) {
 export default function ConfirmationPageClient({
   title,
   slug,
-  videoPublicPath,
   schedule,
   durationSec,
   confirmationPage,
@@ -200,10 +198,7 @@ export default function ConfirmationPageClient({
   const headline = fillTemplate(confirmationPage.headline, title);
   const scheduleHeading = fillTemplate(confirmationPage.scheduleHeading, title);
   const introText = fillTemplate(confirmationPage.introText, title);
-  const mediaUrl =
-    confirmationPage.mediaType === "image"
-      ? confirmationPage.mediaUrl
-      : confirmationPage.mediaUrl || videoPublicPath;
+  const mediaUrl = confirmationPage.mediaUrl.trim();
   const embedVideo = confirmationPage.mediaType === "video" ? parseEmbedVideoUrl(mediaUrl) : null;
   const scheduledLabel = resolvedSchedule
     ? new Intl.DateTimeFormat("en-US", {
@@ -266,7 +261,11 @@ export default function ConfirmationPageClient({
 
         <div className={`mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr] ${mediaFirst ? "" : "lg:[&>*:first-child]:order-2"}`}>
           <div className="overflow-hidden bg-white">
-            {confirmationPage.mediaType === "image" ? (
+            {!mediaUrl ? (
+              <div className="flex aspect-video w-full items-center justify-center rounded-[2px] border border-dashed border-[#E6EDF3] bg-[#F8FBFF] px-6 text-center text-sm text-[#6B7280]">
+                No confirmation media selected yet.
+              </div>
+            ) : confirmationPage.mediaType === "image" ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={mediaUrl}
