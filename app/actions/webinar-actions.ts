@@ -2,6 +2,8 @@
 
 import "server-only";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { rm } from "fs/promises";
+import { join } from "path";
 import { adminDb } from "@/lib/services/firebase-admin";
 import type {
   WebinarBotConfig,
@@ -125,6 +127,7 @@ const DEFAULT_TIMEZONE_BASE = "Asia/Manila";
 const DEFAULT_LIVE_WINDOW_MINUTES = 120;
 const DEFAULT_LATE_GRACE_MINUTES = 15;
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DELETE_BATCH_SIZE = 400;
 
 const DEFAULT_REGISTRATION_PAGE: WebinarRegistrationPageConfig = {
   eyebrow: "Live Workshop Access",
@@ -227,6 +230,69 @@ function assertPublicVideoPath(path: string) {
   if (/^https?:\/\//i.test(path)) {
     throw new Error("videoPublicPath must not be an external URL");
   }
+}
+
+function sanitizeFolderSegment(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+async function deleteDocsInBatches(query: FirebaseFirestore.Query) {
+  let deleted = 0;
+
+  while (true) {
+    const snap = await query.limit(DELETE_BATCH_SIZE).get();
+    if (snap.empty) break;
+
+    const batch = adminDb.batch();
+    for (const doc of snap.docs) {
+      batch.delete(doc.ref);
+      deleted += 1;
+    }
+    await batch.commit();
+  }
+
+  return deleted;
+}
+
+async function deleteChildCollection(
+  parentRef: FirebaseFirestore.DocumentReference,
+  collectionName: string
+) {
+  return deleteDocsInBatches(parentRef.collection(collectionName));
+}
+
+async function deleteSessionsForWebinar(input: {
+  webinarId: string;
+  collectionName: "sessions" | "liveSessions";
+  childCollections: string[];
+}) {
+  let deleted = 0;
+
+  while (true) {
+    const snap = await adminDb
+      .collection(input.collectionName)
+      .where("webinarId", "==", input.webinarId)
+      .limit(DELETE_BATCH_SIZE)
+      .get();
+
+    if (snap.empty) break;
+
+    for (const doc of snap.docs) {
+      for (const childCollection of input.childCollections) {
+        await deleteChildCollection(doc.ref, childCollection);
+      }
+      await doc.ref.delete();
+      deleted += 1;
+    }
+  }
+
+  return deleted;
 }
 
 function fromLegacyScheduleFields(input: WebinarInput): Partial<WebinarSchedule> {
@@ -1284,4 +1350,56 @@ export async function getWebinarBySlugAction(slug: string): Promise<WebinarView 
 
   const doc = snap.docs[0];
   return toWebinarView(doc.id, doc.data());
+}
+
+export async function deleteWebinarAndAssetsAction(webinarId: string) {
+  const cleanWebinarId = webinarId.trim();
+  if (!cleanWebinarId) throw new Error("webinarId is required");
+
+  const webinarRef = adminDb.collection("webinars").doc(cleanWebinarId);
+  const webinarSnap = await webinarRef.get();
+  if (!webinarSnap.exists) {
+    throw new Error("Webinar not found");
+  }
+
+  const webinar = webinarSnap.data() ?? {};
+  const slug = String(webinar.slug ?? "").trim();
+  const folderCandidates = [...new Set([cleanWebinarId, slug].map(sanitizeFolderSegment).filter(Boolean))];
+
+  const [predefinedDeleted, registrationsDeleted, sessionsDeleted, liveSessionsDeleted] =
+    await Promise.all([
+      deleteChildCollection(webinarRef, "predefinedMessages"),
+      deleteDocsInBatches(
+        adminDb.collection("registrations").where("webinarId", "==", cleanWebinarId)
+      ),
+      deleteSessionsForWebinar({
+        webinarId: cleanWebinarId,
+        collectionName: "sessions",
+        childCollections: ["messages"],
+      }),
+      deleteSessionsForWebinar({
+        webinarId: cleanWebinarId,
+        collectionName: "liveSessions",
+        childCollections: ["viewers"],
+      }),
+    ]);
+
+  await webinarRef.delete();
+
+  await Promise.all(
+    folderCandidates.map((folder) =>
+      rm(join(process.cwd(), "public", "uploads", "webinars", folder), {
+        recursive: true,
+        force: true,
+      })
+    )
+  );
+
+  return {
+    webinarId: cleanWebinarId,
+    predefinedDeleted,
+    registrationsDeleted,
+    sessionsDeleted,
+    liveSessionsDeleted,
+  };
 }

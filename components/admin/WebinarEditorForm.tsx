@@ -134,6 +134,7 @@ export default function WebinarEditorForm({
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [sessionUploadedVideoPath, setSessionUploadedVideoPath] = useState<string | null>(null);
@@ -362,6 +363,42 @@ export default function WebinarEditorForm({
     window.location.reload();
   }
 
+  async function handleTestWebhook() {
+    const trimmedWebhookUrl = webhookUrl.trim();
+    if (!trimmedWebhookUrl) {
+      setErrorToast("Enter a webhook URL before sending a test payload.");
+      return;
+    }
+
+    setIsTestingWebhook(true);
+    setLoadingMessage("Sending test webhook...");
+    setErrorToast(null);
+
+    try {
+      const response = await fetch("/api/admin/test-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: trimmedWebhookUrl,
+          userTimeZone:
+            Intl.DateTimeFormat().resolvedOptions().timeZone || initial.schedule.timezoneBase,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Webhook test failed");
+      }
+
+      setSuccessToast("Test webhook sent successfully");
+    } catch (error) {
+      setErrorToast(error instanceof Error ? error.message : "Webhook test failed");
+    } finally {
+      setIsTestingWebhook(false);
+      setLoadingMessage(null);
+    }
+  }
+
   const topActions = (
     <div className="flex flex-wrap items-center gap-3">
       <button
@@ -572,7 +609,7 @@ export default function WebinarEditorForm({
               </div>
             </AdminSection>
 
-            <AdminSection title="Automation" description="Control webhook delivery for external workflows." accent="bg-[#2F6FA3]">
+            <AdminSection title="Webhook" description="Send registration data to GHL, Zapier, or other external workflows." accent="bg-[#2F6FA3]">
               <input type="hidden" name="webhook.enabled" value="false" />
               <label className="inline-flex items-center gap-3 rounded-xl border border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm text-[#1F2A37]">
                 <input
@@ -595,8 +632,23 @@ export default function WebinarEditorForm({
                   placeholder="https://hooks.zapier.com/..."
                   className={inputClass}
                 />
-                <span className="mt-2 block text-xs text-[#6B7280]">POST registration payloads to Zapier or GHL.</span>
+                <span className="mt-2 block text-xs text-[#6B7280]">
+                  POST registration payloads to Zapier or GHL.
+                </span>
               </label>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTestWebhook}
+                  disabled={isTestingWebhook || isSaving || isUploading || !webhookUrl.trim()}
+                  className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm font-semibold text-[#2F6FA3] transition hover:bg-[#F0F7FF] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isTestingWebhook ? "Sending test..." : "Test Webhook"}
+                </button>
+                <span className="text-xs text-[#6B7280]">
+                  Sends a sample registration payload so GHL or Zapier can map the fields correctly.
+                </span>
+              </div>
             </AdminSection>
 
             <AdminSection title="Schedule" description="Configure local-time sessions and live access windows." accent="bg-[#F58220]">

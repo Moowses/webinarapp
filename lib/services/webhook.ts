@@ -12,6 +12,21 @@ type RegistrationWebhookInput = {
   scheduledStartISO: string;
 };
 
+export type RegistrationWebhookPayload = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  webinarTime: string;
+  webinarTimeGHL: string;
+  tokens: string;
+  userTimeZone: string;
+  confirmationLinkDesktop: string;
+  confirmationLinkMobile: string;
+  isMobile: boolean;
+  astatus: "Registered";
+};
+
 function getBaseUrl(webhook: WebinarWebhook): string {
   const fromWebinar = webhook.confirmationBaseUrl?.trim();
   if (fromWebinar) return fromWebinar.replace(/\/$/, "");
@@ -73,9 +88,9 @@ function buildConfirmationLink(input: {
   return url.toString();
 }
 
-export async function postRegistrationWebhook(input: RegistrationWebhookInput) {
-  if (!input.webhook.enabled || !input.webhook.url) return;
-
+export function buildRegistrationWebhookPayload(
+  input: RegistrationWebhookInput
+): RegistrationWebhookPayload {
   const baseUrl = getBaseUrl(input.webhook);
   const webinarTime = formatForDisplay(input.scheduledStartISO, input.userTimeZone);
   const webinarTimeGHL = formatForGhl(input.scheduledStartISO, input.userTimeZone);
@@ -90,7 +105,7 @@ export async function postRegistrationWebhook(input: RegistrationWebhookInput) {
     userTimeZone: input.userTimeZone,
   });
 
-  const payload = {
+  return {
     firstName: input.firstName,
     lastName: input.lastName,
     email: input.email,
@@ -104,8 +119,10 @@ export async function postRegistrationWebhook(input: RegistrationWebhookInput) {
     isMobile: input.isMobile,
     astatus: "Registered",
   };
+}
 
-  const response = await fetch(input.webhook.url, {
+export async function postWebhookPayload(url: string, payload: RegistrationWebhookPayload) {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -113,8 +130,14 @@ export async function postRegistrationWebhook(input: RegistrationWebhookInput) {
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(
-      `Webhook POST failed (${response.status}) url=${input.webhook.url} body=${body.slice(0, 400)}`
-    );
+    throw new Error(`Webhook POST failed (${response.status}) url=${url} body=${body.slice(0, 400)}`);
   }
+}
+
+export async function postRegistrationWebhook(input: RegistrationWebhookInput) {
+  if (!input.webhook.enabled || !input.webhook.url) return;
+
+  const payload = buildRegistrationWebhookPayload(input);
+
+  await postWebhookPayload(input.webhook.url, payload);
 }
