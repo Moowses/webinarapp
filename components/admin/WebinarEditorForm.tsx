@@ -264,11 +264,11 @@ export default function WebinarEditorForm({
     readVideoDuration(file);
   }
 
-  async function uploadVideo() {
-    if (!selectedFile) return;
+  async function uploadVideo(): Promise<string | null> {
+    if (!selectedFile) return null;
     if (!initial.webinarId && !sanitizeSegment(slug)) {
       setErrorToast("Enter a slug before uploading the video.");
-      return false;
+      return null;
     }
 
     setLoadingMessage("Uploading video...");
@@ -294,12 +294,12 @@ export default function WebinarEditorForm({
       setSuccessToast("Video uploaded successfully");
       setSelectedFile(null);
       setHasUnsavedChanges(true);
-      return true;
+      return payload.publicPath;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed";
       setUploadStatus(message);
       setErrorToast(message);
-      return false;
+      return null;
     } finally {
       setIsUploading(false);
       setLoadingMessage(null);
@@ -313,9 +313,10 @@ export default function WebinarEditorForm({
       return;
     }
 
+    let uploadedPathForSave: string | null = null;
     if (mustUploadFirst) {
-      const uploaded = await uploadVideo();
-      if (!uploaded) return;
+      uploadedPathForSave = await uploadVideo();
+      if (!uploadedPathForSave) return;
     }
 
     setIsSaving(true);
@@ -324,6 +325,7 @@ export default function WebinarEditorForm({
 
     try {
       const formData = new FormData(formRef.current);
+      formData.set("videoPublicPath", uploadedPathForSave || videoPublicPath);
       const result = await action(formData);
       setSessionUploadedVideoPath(null);
       setHasUnsavedChanges(false);

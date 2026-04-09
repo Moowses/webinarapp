@@ -20,7 +20,7 @@ function getBaseUrl(webhook: WebinarWebhook): string {
   if (fromEnv) return fromEnv.replace(/\/$/, "");
 
   if (process.env.NODE_ENV === "production") {
-    throw new Error("Missing BASE_URL or NEXT_PUBLIC_BASE_URL for confirmation links");
+    return "https://live.onlinebroadcastpro.com";
   }
 
   return "http://localhost:3000";
