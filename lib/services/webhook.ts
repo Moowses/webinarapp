@@ -19,6 +19,10 @@ function getBaseUrl(webhook: WebinarWebhook): string {
   const fromEnv = process.env.NEXT_PUBLIC_BASE_URL?.trim() || process.env.BASE_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Missing BASE_URL or NEXT_PUBLIC_BASE_URL for confirmation links");
+  }
+
   return "http://localhost:3000";
 }
 
