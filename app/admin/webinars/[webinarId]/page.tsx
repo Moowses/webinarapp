@@ -76,6 +76,7 @@ export default async function EditWebinarPage({ params, searchParams }: Props) {
             lateGraceMinutes: webinar.lateGraceMinutes,
             schedule: webinar.schedule,
             webhook: webinar.webhook,
+            attendanceWebhook: webinar.attendanceWebhook,
             redirect: webinar.redirect,
             bot: {
               enabled: webinar.bot.enabled,

@@ -14,6 +14,7 @@ import { generateToken, hashToken } from "@/lib/utils/tokens";
 import type { WebinarSchedule } from "@/types/webinar";
 import type { WebinarWebhook } from "@/types/webinar";
 import { postRegistrationWebhook } from "@/lib/services/webhook";
+import { sendAttendanceWebhookIfNeeded } from "@/lib/services/attendance-webhook";
 
 export type RegisterForWebinarInput = {
   slug: string;
@@ -55,6 +56,7 @@ export type RegistrationRecord = {
   attendedAtISO?: string;
   kickedAtISO?: string;
   status: string;
+  accessToken?: string;
   tokenHash: string;
   isMobile: boolean;
   evaluatedAtISO: string;
@@ -98,6 +100,7 @@ function toRegistrationRecord(
     attendedAtISO: typeof raw.attendedAtISO === "string" ? raw.attendedAtISO : undefined,
     kickedAtISO: typeof raw.kickedAtISO === "string" ? raw.kickedAtISO : undefined,
     status: String(raw.status ?? "Registered"),
+    accessToken: typeof raw.token === "string" ? raw.token : undefined,
     tokenHash: String(raw.tokenHash ?? ""),
     isMobile: Boolean(raw.isMobile),
     evaluatedAtISO: new Date().toISOString(),
@@ -359,6 +362,8 @@ export async function registerForWebinarAction(input: RegisterForWebinarInput) {
     scheduleTimes: webinar.data.schedule.times,
     scheduleLiveWindowMinutes: webinar.data.schedule.liveWindowMinutes,
     status: "Registered",
+    attendedLive: false,
+    token,
     tokenHash,
     isMobile: input.isMobile,
     createdAt: FieldValue.serverTimestamp(),
@@ -416,8 +421,15 @@ export async function markRegistrationAttendedAction(registrationId: string) {
     if (raw.attendedLive) return;
 
     tx.update(ref, {
+      status: "Attended",
       attendedLive: true,
       attendedAtISO: new Date().toISOString(),
     });
   });
+
+  try {
+    await sendAttendanceWebhookIfNeeded(cleanRegistrationId);
+  } catch (error) {
+    console.error("Attendance webhook failed", { registrationId: cleanRegistrationId, error });
+  }
 }

@@ -23,10 +23,13 @@ type WebinarInput = {
   lateGraceMinutes?: unknown;
   schedule?: unknown;
   webhook?: unknown;
+  attendanceWebhook?: unknown;
   redirect?: unknown;
   bot?: unknown;
   webhookEnabled?: unknown;
   webhookUrl?: unknown;
+  attendanceWebhookEnabled?: unknown;
+  attendanceWebhookUrl?: unknown;
   redirectEnabled?: unknown;
   redirectUrl?: unknown;
   botEnabled?: unknown;
@@ -90,6 +93,7 @@ export type WebinarView = {
   scheduleLocalTime: string;
   scheduleWeekday?: number;
   webhook: WebinarWebhook;
+  attendanceWebhook: WebinarWebhook;
   redirect: WebinarRedirectConfig;
   bot?: WebinarBotConfig;
   registrationPage: WebinarRegistrationPageConfig;
@@ -100,6 +104,8 @@ export type WebinarListItem = {
   webinarId: string;
   title: string;
   slug: string;
+  schedule: WebinarSchedule;
+  durationSec: number;
   updatedAt: string | null;
 };
 
@@ -115,6 +121,7 @@ export type WebinarRecord = {
   scheduleLocalTime: string;
   scheduleWeekday?: number;
   webhook: WebinarWebhook;
+  attendanceWebhook: WebinarWebhook;
   redirect: WebinarRedirectConfig;
   bot: WebinarBotConfig;
   registrationPage: WebinarRegistrationPageConfig;
@@ -358,6 +365,7 @@ function parseInput(formDataOrTypedInput: FormData | WebinarInput): WebinarInput
     const days = formDataOrTypedInput.getAll("schedule.daysOfWeek");
     const times = formDataOrTypedInput.getAll("schedule.times");
     const webhookEnabledValues = formDataOrTypedInput.getAll("webhook.enabled");
+    const attendanceWebhookEnabledValues = formDataOrTypedInput.getAll("attendanceWebhook.enabled");
     const redirectEnabledValues = formDataOrTypedInput.getAll("redirect.enabled");
     const botEnabledValues = formDataOrTypedInput.getAll("bot.enabled");
 
@@ -383,6 +391,15 @@ function parseInput(formDataOrTypedInput: FormData | WebinarInput): WebinarInput
             ? webhookEnabledValues[webhookEnabledValues.length - 1]
             : formDataOrTypedInput.get("webhookEnabled")) ?? undefined,
         url: formDataOrTypedInput.get("webhook.url") ?? formDataOrTypedInput.get("webhookUrl"),
+      },
+      attendanceWebhook: {
+        enabled:
+          (attendanceWebhookEnabledValues.length
+            ? attendanceWebhookEnabledValues[attendanceWebhookEnabledValues.length - 1]
+            : formDataOrTypedInput.get("attendanceWebhookEnabled")) ?? undefined,
+        url:
+          formDataOrTypedInput.get("attendanceWebhook.url") ??
+          formDataOrTypedInput.get("attendanceWebhookUrl"),
       },
       redirect: {
         enabled:
@@ -559,6 +576,33 @@ function normalizeWebhook(input: WebinarInput, existing?: WebinarWebhook): Webin
   if (confirmationBaseUrl) {
     return { enabled, url, confirmationBaseUrl };
   }
+  return { enabled, url };
+}
+
+function normalizeAttendanceWebhook(
+  input: WebinarInput,
+  existing?: WebinarWebhook
+): WebinarWebhook {
+  const webhookInput =
+    input.attendanceWebhook && typeof input.attendanceWebhook === "object"
+      ? (input.attendanceWebhook as Record<string, unknown>)
+      : {};
+
+  const enabled = toWebhookEnabled(
+    webhookInput.enabled ?? input.attendanceWebhookEnabled,
+    existing?.enabled ?? false
+  );
+  const url = toCleanString(
+    webhookInput.url ?? input.attendanceWebhookUrl ?? existing?.url ?? ""
+  );
+
+  if (enabled) {
+    if (!url) throw new Error("attendanceWebhook.url is required when attendance webhook is enabled");
+    if (!/^https?:\/\//i.test(url)) {
+      throw new Error("attendanceWebhook.url must start with http:// or https://");
+    }
+  }
+
   return { enabled, url };
 }
 
@@ -954,6 +998,16 @@ function parseStoredWebhook(raw: FirebaseFirestore.DocumentData): WebinarWebhook
   return { enabled, url };
 }
 
+function parseStoredAttendanceWebhook(raw: FirebaseFirestore.DocumentData): WebinarWebhook {
+  const webhookRaw =
+    raw.attendanceWebhook && typeof raw.attendanceWebhook === "object"
+      ? (raw.attendanceWebhook as Record<string, unknown>)
+      : {};
+  const enabled = toWebhookEnabled(webhookRaw.enabled, false);
+  const url = toCleanString(webhookRaw.url);
+  return { enabled, url };
+}
+
 function parseStoredRedirect(raw: FirebaseFirestore.DocumentData): WebinarRedirectConfig {
   const redirectRaw =
     raw.redirect && typeof raw.redirect === "object"
@@ -1068,6 +1122,7 @@ function parseStoredConfirmationPage(
 function toWebinarView(docId: string, raw: FirebaseFirestore.DocumentData): WebinarView {
   const schedule = parseStoredSchedule(raw);
   const webhook = parseStoredWebhook(raw);
+  const attendanceWebhook = parseStoredAttendanceWebhook(raw);
   const redirect = parseStoredRedirect(raw);
   const registrationPage = parseStoredRegistrationPage(raw);
   const confirmationPage = parseStoredConfirmationPage(raw);
@@ -1088,6 +1143,7 @@ function toWebinarView(docId: string, raw: FirebaseFirestore.DocumentData): Webi
     scheduleLocalTime: legacy.scheduleLocalTime,
     scheduleWeekday: legacy.scheduleWeekday,
     webhook,
+    attendanceWebhook,
     redirect,
     registrationPage,
     confirmationPage,
@@ -1109,6 +1165,7 @@ export async function createWebinarAction(formDataOrTypedInput: FormData | Webin
 
   const schedule = normalizeSchedule(input);
   const webhook = normalizeWebhook(input);
+  const attendanceWebhook = normalizeAttendanceWebhook(input);
   const redirect = normalizeRedirect(input);
   const bot = normalizeBot(input);
   const registrationPage = normalizeRegistrationPage(input);
@@ -1124,6 +1181,7 @@ export async function createWebinarAction(formDataOrTypedInput: FormData | Webin
     lateGraceMinutes,
     schedule,
     webhook,
+    attendanceWebhook,
     redirect,
     bot,
     registrationPage,
@@ -1195,6 +1253,10 @@ export async function updateWebinarAction(
 
   const webhookKeysProvided =
     input.webhook !== undefined || input.webhookEnabled !== undefined || input.webhookUrl !== undefined;
+  const attendanceWebhookKeysProvided =
+    input.attendanceWebhook !== undefined ||
+    input.attendanceWebhookEnabled !== undefined ||
+    input.attendanceWebhookUrl !== undefined;
   const redirectKeysProvided =
     input.redirect !== undefined ||
     input.redirectEnabled !== undefined ||
@@ -1253,6 +1315,11 @@ export async function updateWebinarAction(
     updates.webhook = normalizeWebhook(input, existingWebhook);
   }
 
+  if (attendanceWebhookKeysProvided) {
+    const existingAttendanceWebhook = parseStoredAttendanceWebhook(existingData);
+    updates.attendanceWebhook = normalizeAttendanceWebhook(input, existingAttendanceWebhook);
+  }
+
   if (redirectKeysProvided) {
     const existingRedirect = parseStoredRedirect(existingData);
     updates.redirect = normalizeRedirect(input, existingRedirect);
@@ -1283,7 +1350,7 @@ export async function updateWebinarAction(
 export async function listWebinarsAction(): Promise<WebinarListItem[]> {
   const snap = await adminDb
     .collection("webinars")
-    .select("title", "slug", "updatedAt")
+    .select("title", "slug", "updatedAt", "schedule", "durationSec", "scheduleType", "scheduleLocalTime", "scheduleWeekday")
     .orderBy("updatedAt", "desc")
     .limit(50)
     .get();
@@ -1293,6 +1360,8 @@ export async function listWebinarsAction(): Promise<WebinarListItem[]> {
       webinarId: doc.id,
       title: String(raw.title ?? ""),
       slug: String(raw.slug ?? ""),
+      schedule: parseStoredSchedule(raw),
+      durationSec: Number(raw.durationSec ?? 0),
       updatedAt: toIsoOrNull(raw.updatedAt),
     };
   });
@@ -1308,6 +1377,7 @@ export async function getWebinarAction(webinarId: string): Promise<WebinarRecord
   const raw = doc.data() ?? {};
   const schedule = parseStoredSchedule(raw);
   const webhook = parseStoredWebhook(raw);
+  const attendanceWebhook = parseStoredAttendanceWebhook(raw);
   const redirect = parseStoredRedirect(raw);
   const bot = parseStoredBot(raw);
   const registrationPage = parseStoredRegistrationPage(raw);
@@ -1329,6 +1399,7 @@ export async function getWebinarAction(webinarId: string): Promise<WebinarRecord
     scheduleLocalTime: legacy.scheduleLocalTime,
     scheduleWeekday: legacy.scheduleWeekday,
     webhook,
+    attendanceWebhook,
     redirect,
     bot,
     registrationPage,

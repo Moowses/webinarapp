@@ -27,6 +27,10 @@ type WebinarFormData = {
     enabled: boolean;
     url: string;
   };
+  attendanceWebhook: {
+    enabled: boolean;
+    url: string;
+  };
   redirect: {
     enabled: boolean;
     url: string;
@@ -116,6 +120,10 @@ export default function WebinarEditorForm({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [webhookEnabled, setWebhookEnabled] = useState(initial.webhook.enabled);
   const [webhookUrl, setWebhookUrl] = useState(initial.webhook.url);
+  const [attendanceWebhookEnabled, setAttendanceWebhookEnabled] = useState(
+    initial.attendanceWebhook.enabled
+  );
+  const [attendanceWebhookUrl, setAttendanceWebhookUrl] = useState(initial.attendanceWebhook.url);
   const [redirectEnabled, setRedirectEnabled] = useState(initial.redirect.enabled);
   const [redirectUrl, setRedirectUrl] = useState(initial.redirect.url);
   const [botEnabled, setBotEnabled] = useState(initial.bot.enabled);
@@ -135,6 +143,7 @@ export default function WebinarEditorForm({
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [isTestingAttendanceWebhook, setIsTestingAttendanceWebhook] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [sessionUploadedVideoPath, setSessionUploadedVideoPath] = useState<string | null>(null);
@@ -399,6 +408,47 @@ export default function WebinarEditorForm({
     }
   }
 
+  async function handleTestAttendanceWebhook(mode: "attended" | "no-show") {
+    const trimmedWebhookUrl = attendanceWebhookUrl.trim();
+    if (!trimmedWebhookUrl) {
+      setErrorToast("Enter an attendance webhook URL before sending a test payload.");
+      return;
+    }
+
+    setIsTestingAttendanceWebhook(true);
+    setLoadingMessage("Sending attendance test webhook...");
+    setErrorToast(null);
+
+    try {
+      const response = await fetch("/api/admin/test-attendance-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: trimmedWebhookUrl,
+          userTimeZone:
+            Intl.DateTimeFormat().resolvedOptions().timeZone || initial.schedule.timezoneBase,
+          mode,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Attendance webhook test failed");
+      }
+
+      setSuccessToast(
+        mode === "no-show"
+          ? "No-show test webhook sent successfully"
+          : "Attendance test webhook sent successfully"
+      );
+    } catch (error) {
+      setErrorToast(error instanceof Error ? error.message : "Attendance webhook test failed");
+    } finally {
+      setIsTestingAttendanceWebhook(false);
+      setLoadingMessage(null);
+    }
+  }
+
   const topActions = (
     <div className="flex flex-wrap items-center gap-3">
       <button
@@ -647,6 +697,70 @@ export default function WebinarEditorForm({
                 </button>
                 <span className="text-xs text-[#6B7280]">
                   Sends a sample registration payload so GHL or Zapier can map the fields correctly.
+                </span>
+              </div>
+            </AdminSection>
+
+            <AdminSection
+              title="Attendance Webhook"
+              description="Send attended webinar events to GHL, Zapier, or other external workflows."
+              accent="bg-[#F58220]"
+            >
+              <input type="hidden" name="attendanceWebhook.enabled" value="false" />
+              <label className="inline-flex items-center gap-3 rounded-xl border border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm text-[#1F2A37]">
+                <input
+                  type="checkbox"
+                  name="attendanceWebhook.enabled"
+                  value="true"
+                  checked={attendanceWebhookEnabled}
+                  onChange={(event) => setAttendanceWebhookEnabled(event.target.checked)}
+                />
+                Attendance webhook enabled
+              </label>
+              <label className="mt-5 block text-sm text-[#1F2A37]">
+                Attendance Webhook URL
+                <input
+                  name="attendanceWebhook.url"
+                  type="url"
+                  value={attendanceWebhookUrl}
+                  onChange={(event) => setAttendanceWebhookUrl(event.target.value)}
+                  required={attendanceWebhookEnabled}
+                  placeholder="https://hooks.zapier.com/..."
+                  className={inputClass}
+                />
+                <span className="mt-2 block text-xs text-[#6B7280]">
+                  POST attendance payloads when a registrant actually joins the live webinar.
+                </span>
+              </label>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleTestAttendanceWebhook("attended")}
+                  disabled={
+                    isTestingAttendanceWebhook ||
+                    isSaving ||
+                    isUploading ||
+                    !attendanceWebhookUrl.trim()
+                  }
+                  className="rounded-xl border border-[#F58220] bg-white px-4 py-2 text-sm font-semibold text-[#F58220] transition hover:bg-[#FFF4EA] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isTestingAttendanceWebhook ? "Sending test..." : "Test Attended Webhook"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTestAttendanceWebhook("no-show")}
+                  disabled={
+                    isTestingAttendanceWebhook ||
+                    isSaving ||
+                    isUploading ||
+                    !attendanceWebhookUrl.trim()
+                  }
+                  className="rounded-xl border border-[#F58220] bg-white px-4 py-2 text-sm font-semibold text-[#F58220] transition hover:bg-[#FFF4EA] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isTestingAttendanceWebhook ? "Sending test..." : "Test No-show Webhook"}
+                </button>
+                <span className="text-xs text-[#6B7280]">
+                  Sends sample attended and no-show payloads so GHL or Zapier can map attendance outcomes separately from registration.
                 </span>
               </div>
             </AdminSection>

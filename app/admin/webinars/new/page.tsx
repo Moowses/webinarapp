@@ -20,6 +20,10 @@ const defaultWebinar = {
     enabled: false,
     url: "",
   },
+  attendanceWebhook: {
+    enabled: false,
+    url: "",
+  },
   redirect: {
     enabled: false,
     url: "",

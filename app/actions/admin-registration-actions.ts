@@ -28,7 +28,12 @@ export type AdminRegistrantRow = {
   webinarId: string;
   webinarSlug: string;
   webinarTitle: string;
+  accessToken: string | null;
   createdAt: string | null;
+  scheduledStartISO: string | null;
+  scheduledEndISO: string | null;
+  liveWindowEndISO: string | null;
+  registrationStatus: string;
   attendedLive: boolean;
   attendedAtISO: string | null;
   watchedMinutesEstimate: number | null;
@@ -79,7 +84,12 @@ export async function listRegistrantsForAdminAction(): Promise<AdminRegistrantRo
       "webinarId",
       "webinarSlug",
       "webinarTitle",
+      "token",
       "createdAt",
+      "scheduledStartISO",
+      "scheduledEndISO",
+      "liveWindowEndISO",
+      "status",
       "attendedLive",
       "attendedAtISO",
       "liveLastSeenAtISO",
@@ -138,7 +148,15 @@ export async function listRegistrantsForAdminAction(): Promise<AdminRegistrantRo
         webinarMetaRow?.title ||
         String(data.webinarSlug ?? "") ||
         "(Unknown webinar)",
+      accessToken: typeof data.token === "string" ? data.token : null,
       createdAt: toIsoOrNull(data.createdAt),
+      scheduledStartISO:
+        typeof data.scheduledStartISO === "string" ? data.scheduledStartISO : null,
+      scheduledEndISO:
+        typeof data.scheduledEndISO === "string" ? data.scheduledEndISO : null,
+      liveWindowEndISO:
+        typeof data.liveWindowEndISO === "string" ? data.liveWindowEndISO : null,
+      registrationStatus: String(data.status ?? "Registered"),
       attendedLive: Boolean(data.attendedLive),
       attendedAtISO,
       watchedMinutesEstimate,

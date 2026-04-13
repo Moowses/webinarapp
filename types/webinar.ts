@@ -77,6 +77,7 @@ export type Webinar = {
   lateGraceMinutes?: number;
   schedule: WebinarSchedule;
   webhook: WebinarWebhook;
+  attendanceWebhook?: WebinarWebhook;
   redirect?: WebinarRedirectConfig;
   bot?: WebinarBotConfig;
   registrationPage?: WebinarRegistrationPageConfig;

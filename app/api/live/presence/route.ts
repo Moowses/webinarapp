@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/services/firebase-admin";
+import { sendAttendanceWebhookIfNeeded } from "@/lib/services/attendance-webhook";
 import { buildLiveSessionId } from "@/lib/utils/live-session";
 import { hashToken } from "@/lib/utils/tokens";
 
@@ -35,6 +36,8 @@ export async function POST(request: Request) {
     const ref = snap.docs[0].ref;
     const now = Date.now();
     const nowISO = new Date(now).toISOString();
+
+    const registrationId = snap.docs[0].id;
 
     await adminDb.runTransaction(async (tx) => {
       const doc = await tx.get(ref);
@@ -127,6 +130,7 @@ export async function POST(request: Request) {
       }
 
       tx.update(ref, {
+        status: "Attended",
         attendedLive: true,
         attendedAtISO: typeof data.attendedAtISO === "string" ? data.attendedAtISO : nowISO,
         liveLastSeenAtISO: nowISO,
@@ -134,6 +138,12 @@ export async function POST(request: Request) {
         liveWatchAccumulatedSec: nextAccumulatedSec,
       });
     });
+
+    try {
+      await sendAttendanceWebhookIfNeeded(registrationId);
+    } catch (error) {
+      console.error("Attendance webhook failed", { registrationId, error });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
