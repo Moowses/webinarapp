@@ -71,6 +71,7 @@ type ActivityLogRow = {
 
 const navItems: Array<{ key: SectionKey; label: string; eyebrow: string }> = [
   { key: "dashboard", label: "Dashboard", eyebrow: "Control center" },
+  { key: "scheduled-webinars", label: "Scheduled Webinars", eyebrow: "Upcoming sessions" },
   { key: "activity-log", label: "Activity Log", eyebrow: "Attendance" },
   { key: "live-monitor", label: "Live Monitor", eyebrow: "Observe sessions" },
   { key: "webinars", label: "Webinars", eyebrow: "Manage library" },
@@ -445,6 +446,7 @@ export default function AdminDashboardClient({ webinars, registrants, activeSess
                 <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Move faster</h2>
                 <div className="mt-5 grid gap-3">
                   <QuickAction title="Create webinar" description="Set up a new registration and live experience." href="/admin/webinars/new" variant="primary" />
+                  <QuickAction title="Scheduled webinars" description="Check the next live date without opening each webinar." onClick={() => setActive("scheduled-webinars")} />
                   <QuickAction title="Open activity log" description="Review scheduled, live, and completed webinar sessions." onClick={() => setActive("activity-log")} />
                   <QuickAction title="Open live monitor" description="Inspect active sessions, viewers, and real-time chat." onClick={() => setActive("live-monitor")} />
                   <QuickAction title="View registrants" description="Filter attendee records by webinar and date." onClick={() => setActive("registrants")} variant="accent" />
