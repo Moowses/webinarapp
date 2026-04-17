@@ -97,6 +97,11 @@ function buildIframeCode(slug: string) {
     if (event.data.type === "CLOSE_WEBINAR_MODAL") {
       closeModal();
     }
+
+    if (event.data.type === "REDIRECT_WEBINAR_TOP" && event.data.url) {
+      closeModal();
+      window.location.assign(event.data.url);
+    }
   });
 
   closeBtn.addEventListener("click", closeModal);

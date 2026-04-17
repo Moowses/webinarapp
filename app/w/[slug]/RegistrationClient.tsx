@@ -180,6 +180,35 @@ function normalizePhone(phone: string) {
   return phone.replace(/[^\d+]/g, "");
 }
 
+function redirectAfterRegistration(url: string) {
+  if (window.top === window) {
+    window.location.assign(url);
+    return;
+  }
+
+  try {
+    if (window.top) {
+      window.top.location.href = url;
+      return;
+    }
+  } catch {
+    // Fall through to parent messaging for cross-origin embeds.
+  }
+
+  if (window.parent !== window) {
+    window.parent.postMessage(
+      {
+        type: "REDIRECT_WEBINAR_TOP",
+        url,
+      },
+      "*"
+    );
+    return;
+  }
+
+  window.location.assign(url);
+}
+
 export default function RegistrationClient({
   slug,
   title,
@@ -334,8 +363,8 @@ export default function RegistrationClient({
           isMobile,
         });
         const confirmationUrl = `${window.location.origin}/confirm/${result.token}`;
-        if (window.top && window.top !== window) {
-          window.top.location.assign(confirmationUrl);
+        if (window.top !== window) {
+          redirectAfterRegistration(confirmationUrl);
           return;
         }
         router.push(`/confirm/${result.token}`);
