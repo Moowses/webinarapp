@@ -26,6 +26,7 @@ type LiveMessage = {
   createdAtMs: number | null;
   playbackOffsetSec: number | null;
   type: "user" | "ai" | "system" | "predefined";
+  isPending?: boolean;
 };
 
 type Props = {
@@ -68,6 +69,7 @@ export default function CombinedChatStream({
   const [sending, setSending] = useState(false);
 
   const [liveMessages, setLiveMessages] = useState<LiveMessage[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<LiveMessage[]>([]);
   const [predefinedMessages, setPredefinedMessages] = useState<PredefinedMessage[]>([]);
   const [cursor, setCursor] = useState<{ cursorSec: number; cursorId: string } | null>(null);
   const [hasMorePredefined, setHasMorePredefined] = useState(true);
@@ -181,11 +183,26 @@ export default function CombinedChatStream({
               : "user",
         } satisfies LiveMessage;
       });
+      setPendingMessages((currentPending) =>
+        currentPending.filter(
+          (pending) =>
+            !rows.some(
+              (stored) =>
+                stored.senderName === pending.senderName &&
+                stored.text === pending.text &&
+                stored.type === pending.type
+            )
+        )
+      );
       setLiveMessages(rows);
     });
 
     return () => unsub();
   }, [messagesRef]);
+
+  useEffect(() => {
+    setPendingMessages([]);
+  }, [sessionId]);
 
   const mergedVisibleMessages = useMemo(() => {
     const predefined = predefinedMessages
@@ -196,32 +213,34 @@ export default function CombinedChatStream({
         text: m.text,
         source: "predefined" as const,
         type: "predefined" as const,
+        isPending: false,
         sortMs: scheduledStartMs + m.playbackOffsetSec * 1000,
       }));
 
-    const live = liveMessages
+    const live = [...liveMessages, ...pendingMessages]
       .map((m) => {
-        const sortMs =
-          m.playbackOffsetSec !== null
+        const sortMs = readOnly
+          ? m.playbackOffsetSec !== null
             ? scheduledStartMs + m.playbackOffsetSec * 1000
-            : m.createdAtMs ?? timelineNowMs;
+            : m.createdAtMs ?? timelineNowMs
+          : m.createdAtMs ?? timelineNowMs;
         return {
           key: `l_${m.id}`,
           senderName: m.senderName,
           text: m.text,
           source: "live" as const,
           type: m.type,
+          isPending: m.isPending ?? false,
           sortMs,
         };
-      })
-      .filter((m) => m.sortMs <= timelineNowMs);
+      });
 
     return [...predefined, ...live].sort((a, b) => {
       if (a.sortMs !== b.sortMs) return a.sortMs - b.sortMs;
       if (a.source !== b.source) return a.source === "predefined" ? -1 : 1;
       return a.key.localeCompare(b.key);
     });
-  }, [currentPlaybackSec, liveMessages, predefinedMessages, scheduledStartMs, timelineNowMs]);
+  }, [currentPlaybackSec, liveMessages, pendingMessages, predefinedMessages, readOnly, scheduledStartMs, timelineNowMs]);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -234,6 +253,17 @@ export default function CombinedChatStream({
     if (!clean) return;
     setSending(true);
     setSendError(null);
+    const optimisticMessage: LiveMessage = {
+      id: `pending-${Date.now()}`,
+      senderName: name.trim() || "Guest",
+      text: clean,
+      createdAtMs: Date.now(),
+      playbackOffsetSec: currentPlaybackSec,
+      type: "user",
+      isPending: true,
+    };
+    setPendingMessages((current) => [...current, optimisticMessage]);
+    setText("");
     try {
       console.log("[live-chat] sending user message", {
         webinarId,
@@ -262,8 +292,9 @@ export default function CombinedChatStream({
       if (!response.ok) {
         throw new Error(payload.error || "Failed to send message");
       }
-      setText("");
     } catch (error) {
+      setPendingMessages((current) => current.filter((message) => message.id !== optimisticMessage.id));
+      setText(clean);
       console.error("[live-chat] send failed", error);
       setSendError(error instanceof Error ? error.message : "Failed to send message");
     } finally {
@@ -345,6 +376,11 @@ export default function CombinedChatStream({
           <div
             key={m.key}
             className={`rounded-xl px-3 py-2.5 ${
+              m.isPending
+                ? mobileOverlay
+                  ? "border border-white/15 bg-[rgba(15,23,42,0.72)] shadow-[0_8px_24px_rgba(2,6,23,0.25)] backdrop-blur-sm"
+                  : "border border-[#D6EAF8] bg-[#F7FBFF] shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                :
               mobileOverlay
                 ? "bg-[rgba(15,23,42,0.55)] shadow-[0_8px_24px_rgba(2,6,23,0.25)] backdrop-blur-sm"
                 : "bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]"

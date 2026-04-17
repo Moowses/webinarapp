@@ -1,5 +1,5 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { adminDb } from "@/lib/services/firebase-admin";
 import { completeChatbotKitConversation } from "@/lib/services/chatbotkit";
 import { hashToken } from "@/lib/utils/tokens";
@@ -62,6 +62,130 @@ async function loadBotHistory(sessionId: string) {
     })
     .filter((message) => message.text && message.type !== "predefined")
     .reverse();
+}
+
+async function processBotReply(input: {
+  webinarId: string;
+  sessionId: string;
+  timezoneGroupKey: string;
+  registrationId: string;
+  senderName: string;
+  playbackSec: number;
+}) {
+  const { webinarId, sessionId, timezoneGroupKey, registrationId, senderName, playbackSec } = input;
+  const sessionRef = adminDb.collection("sessions").doc(sessionId);
+  const webinarDoc = await adminDb.collection("webinars").doc(webinarId).get();
+  const webinarData = webinarDoc.data() ?? {};
+  const botRaw =
+    webinarData.bot && typeof webinarData.bot === "object"
+      ? (webinarData.bot as Record<string, unknown>)
+      : {};
+  const botEnabled = Boolean(botRaw.enabled);
+  const botName = cleanText(botRaw.name, MAX_NAME_LENGTH) || "AI Assistant";
+  const botApiKey = cleanText(botRaw.apiKey, 256);
+  const botConversationId = cleanText(botRaw.conversationId, 120);
+  const botActivationDelaySec = Math.max(
+    1,
+    Number.isFinite(Number(botRaw.activationDelaySec))
+      ? Math.floor(Number(botRaw.activationDelaySec))
+      : 60
+  );
+
+  const history = await loadBotHistory(sessionId);
+  const latestUserMessage = history.at(-1)?.text ?? "";
+  const enoughWords = countWords(latestUserMessage) >= MIN_WORDS_FOR_BOT;
+
+  console.log("[live-chat] bot evaluation", {
+    sessionId,
+    webinarId,
+    botEnabled,
+    hasApiKey: Boolean(botApiKey),
+    hasConversationId: Boolean(botConversationId),
+    playbackSec,
+    botActivationDelaySec,
+    enoughWords,
+  });
+
+  if (
+    !botEnabled ||
+    !botApiKey ||
+    !botConversationId ||
+    playbackSec < botActivationDelaySec ||
+    !enoughWords
+  ) {
+    const skipReason = describeBotSkip({
+      botEnabled,
+      hasApiKey: Boolean(botApiKey),
+      hasConversationId: Boolean(botConversationId),
+      playbackPassedDelay: playbackSec >= botActivationDelaySec,
+      enoughWords,
+    });
+    console.log("[live-chat] bot skipped", {
+      sessionId,
+      webinarId,
+      skipReason,
+      reason: {
+        botEnabled,
+        hasApiKey: Boolean(botApiKey),
+        hasConversationId: Boolean(botConversationId),
+        playbackPassedDelay: playbackSec >= botActivationDelaySec,
+        enoughWords,
+      },
+    });
+    return;
+  }
+
+  try {
+    const prompt = buildBotPrompt(history);
+    console.log("[live-chat] sending bot request", {
+      sessionId,
+      webinarId,
+      historyCount: history.length,
+      preview: prompt.slice(0, 200),
+    });
+
+    const completion = await completeChatbotKitConversation({
+      apiKey: botApiKey,
+      conversationId: botConversationId,
+      text: prompt,
+    });
+    const replyText = completion.text ? `${senderName}, ${completion.text}` : "";
+
+    if (!replyText) {
+      console.error("Chat bot reply failed", {
+        webinarId,
+        sessionId,
+        registrationId,
+        botName,
+        error: "Chatbot returned an empty reply",
+      });
+      return;
+    }
+
+    await sessionRef.collection("messages").add({
+      type: "ai",
+      text: replyText,
+      senderName: botName,
+      webinarId,
+      timezoneGroupKey,
+      playbackOffsetSec: playbackSec,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    console.log("[live-chat] bot reply stored", {
+      sessionId,
+      webinarId,
+      botName,
+      replyLength: replyText.length,
+    });
+  } catch (botError) {
+    console.error("Chat bot reply failed", {
+      webinarId,
+      sessionId,
+      registrationId,
+      botName,
+      error: botError,
+    });
+  }
 }
 
 function buildBotPrompt(history: Array<{ senderName: string; text: string; type: string }>) {
@@ -210,142 +334,19 @@ export async function POST(request: Request) {
     });
 
     const playbackSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
-    const webinarDoc = await adminDb.collection("webinars").doc(webinarId).get();
-    const webinarData = webinarDoc.data() ?? {};
-    const botRaw =
-      webinarData.bot && typeof webinarData.bot === "object"
-        ? (webinarData.bot as Record<string, unknown>)
-        : {};
-    const botEnabled = Boolean(botRaw.enabled);
-    const botName = cleanText(botRaw.name, MAX_NAME_LENGTH) || "AI Assistant";
-    const botApiKey = cleanText(botRaw.apiKey, 256);
-    const botConversationId = cleanText(botRaw.conversationId, 120);
-    const botActivationDelaySec = Math.max(
-      1,
-      Number.isFinite(Number(botRaw.activationDelaySec))
-        ? Math.floor(Number(botRaw.activationDelaySec))
-        : 60
-    );
-    const enoughWords = countWords(text) >= MIN_WORDS_FOR_BOT;
 
-    console.log("[live-chat] bot evaluation", {
-      sessionId,
-      webinarId,
-      botEnabled,
-      hasApiKey: Boolean(botApiKey),
-      hasConversationId: Boolean(botConversationId),
-      playbackSec,
-      botActivationDelaySec,
-      enoughWords,
+    after(async () => {
+      await processBotReply({
+        webinarId,
+        sessionId,
+        timezoneGroupKey,
+        registrationId: registrationDoc.id,
+        senderName,
+        playbackSec,
+      });
     });
 
-    let botResult:
-      | {
-          status: "skipped";
-          skipReason: string;
-        }
-      | {
-          status: "replied";
-          botName: string;
-          replyLength: number;
-        }
-      | {
-          status: "failed";
-          error: string;
-        };
-
-    if (
-      botEnabled &&
-      botApiKey &&
-      botConversationId &&
-      playbackSec >= botActivationDelaySec &&
-      enoughWords
-    ) {
-      try {
-        const history = await loadBotHistory(sessionId);
-        const prompt = buildBotPrompt(history);
-        console.log("[live-chat] sending bot request", {
-          sessionId,
-          webinarId,
-          historyCount: history.length,
-          preview: prompt.slice(0, 200),
-        });
-
-        const completion = await completeChatbotKitConversation({
-          apiKey: botApiKey,
-          conversationId: botConversationId,
-          text: prompt,
-        });
-        const replyText = completion.text ? `${senderName}, ${completion.text}` : "";
-
-        if (replyText) {
-          await sessionRef.collection("messages").add({
-            type: "ai",
-            text: replyText,
-            senderName: botName,
-            webinarId,
-            timezoneGroupKey,
-            playbackOffsetSec: playbackSec,
-            createdAt: FieldValue.serverTimestamp(),
-          });
-          console.log("[live-chat] bot reply stored", {
-            sessionId,
-            webinarId,
-            botName,
-            replyLength: replyText.length,
-          });
-          botResult = {
-            status: "replied",
-            botName,
-            replyLength: replyText.length,
-          };
-        } else {
-          botResult = {
-            status: "failed",
-            error: "Chatbot returned an empty reply",
-          };
-        }
-      } catch (botError) {
-        const errorMessage = botError instanceof Error ? botError.message : "Unknown bot error";
-        console.error("Chat bot reply failed", {
-          webinarId,
-          sessionId,
-          registrationId: registrationDoc.id,
-          botName,
-          error: botError,
-        });
-        botResult = {
-          status: "failed",
-          error: errorMessage,
-        };
-      }
-    } else {
-      const skipReason = describeBotSkip({
-        botEnabled,
-        hasApiKey: Boolean(botApiKey),
-        hasConversationId: Boolean(botConversationId),
-        playbackPassedDelay: playbackSec >= botActivationDelaySec,
-        enoughWords,
-      });
-      console.log("[live-chat] bot skipped", {
-        sessionId,
-        webinarId,
-        skipReason,
-        reason: {
-          botEnabled,
-          hasApiKey: Boolean(botApiKey),
-          hasConversationId: Boolean(botConversationId),
-          playbackPassedDelay: playbackSec >= botActivationDelaySec,
-          enoughWords,
-        },
-      });
-      botResult = {
-        status: "skipped",
-        skipReason,
-      };
-    }
-
-    return NextResponse.json({ ok: true, bot: botResult });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === "rate_limited") {

@@ -28,6 +28,10 @@ export default async function LivePage({ params }: Props) {
     redirect("/w/demo?invalid=1");
   }
   const displayName = `${registration.firstName} ${registration.lastName}`.trim() || "Guest";
+  const exitRedirectUrl =
+    webinar.redirect?.enabled && webinar.redirect.url
+      ? webinar.redirect.url
+      : "https://www.google.com";
 
   const now = new Date(registration.evaluatedAtISO).getTime();
   const startMs = new Date(registration.scheduledStartISO).getTime();
@@ -73,7 +77,8 @@ export default async function LivePage({ params }: Props) {
       durationSec={webinar.durationSec}
       displayName={displayName}
       initialAccessRevoked={Boolean(registration.kickedAtISO)}
-      revokedRedirectUrl="https://www.google.com"
+      revokedRedirectUrl={exitRedirectUrl}
+      leaveHref={exitRedirectUrl}
     />
   );
 }

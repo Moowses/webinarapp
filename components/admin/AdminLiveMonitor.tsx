@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  Timestamp,
   type DocumentData,
 } from "firebase/firestore";
 import type {
@@ -25,6 +26,8 @@ type SessionMessage = {
   senderName: string;
   text: string;
   type: "user" | "ai" | "system" | "predefined";
+  createdAtLabel: string;
+  isPending?: boolean;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -38,6 +41,28 @@ function formatClock(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(iso));
+}
+
+function formatMessageTime(value: unknown) {
+  let date: Date | null = null;
+
+  if (value instanceof Timestamp) {
+    date = value.toDate();
+  } else if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      date = parsed;
+    }
+  } else if (value instanceof Date) {
+    date = value;
+  }
+
+  if (!date) return "Sending...";
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 async function sendAdminSessionMessage(input: {
@@ -622,6 +647,7 @@ function AdminSessionChat({ session }: { session: ActiveLiveSessionRow }) {
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [messages, setMessages] = useState<SessionMessage[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<SessionMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -643,8 +669,19 @@ function AdminSessionChat({ session }: { session: ActiveLiveSessionRow }) {
             data.type === "ai" || data.type === "system" || data.type === "predefined"
               ? data.type
               : "user",
+          createdAtLabel: formatMessageTime(data.createdAt),
         } satisfies SessionMessage;
       });
+      setPendingMessages((currentPending) =>
+        currentPending.filter(
+          (pending) =>
+            !rows.some(
+              (stored) =>
+                stored.senderName === pending.senderName &&
+                stored.text === pending.text
+            )
+        )
+      );
       setMessages(rows);
     });
 
@@ -652,10 +689,14 @@ function AdminSessionChat({ session }: { session: ActiveLiveSessionRow }) {
   }, [session.sessionId]);
 
   useEffect(() => {
+    setPendingMessages([]);
+  }, [session.sessionId]);
+
+  useEffect(() => {
     requestAnimationFrame(() => {
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
     });
-  }, [messages.length]);
+  }, [messages.length, pendingMessages.length]);
 
   async function send() {
     let cleanName = name.trim();
@@ -675,6 +716,16 @@ function AdminSessionChat({ session }: { session: ActiveLiveSessionRow }) {
 
     setSending(true);
     setSendError(null);
+    const optimisticMessage: SessionMessage = {
+      id: `pending-${Date.now()}`,
+      senderName: cleanName,
+      text: cleanText,
+      type: "user",
+      createdAtLabel: "Sending...",
+      isPending: true,
+    };
+    setPendingMessages((current) => [...current, optimisticMessage]);
+    setText("");
     try {
       await sendAdminSessionMessage({
           webinarId: session.webinarId,
@@ -683,13 +734,16 @@ function AdminSessionChat({ session }: { session: ActiveLiveSessionRow }) {
           senderName: cleanName,
           text: cleanText,
       });
-      setText("");
     } catch (error) {
+      setPendingMessages((current) => current.filter((message) => message.id !== optimisticMessage.id));
+      setText(cleanText);
       setSendError(error instanceof Error ? error.message : "Failed to send message");
     } finally {
       setSending(false);
     }
   }
+
+  const visibleMessages = [...messages, ...pendingMessages];
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[#E6EDF3] bg-white shadow-sm">
@@ -709,15 +763,18 @@ function AdminSessionChat({ session }: { session: ActiveLiveSessionRow }) {
         </label>
       </div>
       <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f8fafc] px-4 py-4">
-        {messages.map((message) => (
-          <div key={message.id} className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 shadow-sm">
-            <div className="text-sm font-semibold text-[#1F2A37]">{message.senderName}</div>
+        {visibleMessages.map((message) => (
+          <div key={message.id} className={`rounded-xl border px-3 py-2 shadow-sm ${message.isPending ? "border-[#D6EAF8] bg-[#F7FBFF]" : "border-[#E6EDF3] bg-white"}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-[#1F2A37]">{message.senderName}</div>
+              <div className="text-[11px] text-[#6B7280]">{message.createdAtLabel}</div>
+            </div>
             <div className={message.type === "system" ? "text-sm text-[#6B7280]" : "text-sm text-[#1F2A37]"}>
               {message.text}
             </div>
           </div>
         ))}
-        {messages.length === 0 ? <div className="text-sm text-[#6B7280]">No chat yet.</div> : null}
+        {visibleMessages.length === 0 ? <div className="text-sm text-[#6B7280]">No chat yet.</div> : null}
       </div>
       <div className="border-t border-[#E6EDF3] px-4 py-3">
         <div className="flex gap-2">

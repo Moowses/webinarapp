@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getWebinarBySlugAction } from "@/app/actions/webinar-actions";
 import RegistrationClient from "./RegistrationClient";
@@ -77,11 +76,6 @@ export default async function WebinarRegistrationPage({
           preview={qs.preview === "1"}
         />
 
-        {!qs.popup && !qs.embed ? (
-          <p className="mt-6 text-center text-xs text-slate-500">
-            Dev helper: <Link href="/live-test">open live chat test</Link>
-          </p>
-        ) : null}
       </div>
       </main>
     </>

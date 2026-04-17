@@ -104,6 +104,15 @@ function formatDateTime(iso: string | null, timeZone?: string) {
   }).format(date);
 }
 
+function EmailCell({ email, className = "max-w-[260px]" }: { email: string | null | undefined; className?: string }) {
+  const value = email?.trim() || "-";
+  return (
+    <div className={`${className} truncate text-[#6B7280]`} title={value}>
+      {value}
+    </div>
+  );
+}
+
 function getRegistrantLifecycleStatus(
   row: Pick<AdminRegistrantRow, "attendedLive" | "isWatchingNow" | "liveWindowEndISO">,
   nowMs: number
@@ -337,6 +346,8 @@ export default function AdminDashboardClient({
 
   const latestUpdate = webinars[0]?.updatedAt ?? null;
   const attendedCount = registrants.filter((r) => r.attendedLive).length;
+  const liveCount = activeSessions.length;
+  const followUpCount = Math.max(registrants.length - attendedCount, 0);
   const scheduledRows = useMemo(
     () =>
       computeScheduledRows(webinars, registrants).map((row) => ({
@@ -345,6 +356,7 @@ export default function AdminDashboardClient({
       })),
     [webinars, registrants]
   );
+  const upcomingCount = scheduledRows.filter((row) => row.status !== "Completed").length;
   const activityRows = useMemo(() => computeActivityRows(registrants, activeSessions), [registrants, activeSessions]);
 
   const webinarOptions = useMemo(() => {
@@ -441,58 +453,93 @@ export default function AdminDashboardClient({
 
       <section className="space-y-6">
         {active === "dashboard" ? (
-          <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_360px]">
-            <div className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Recent Webinars</p>
-                  <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Latest webinar activity</h2>
-                  <p className="mt-2 text-sm text-[#6B7280]">Updated {formatDateTime(latestUpdate)}.</p>
-                </div>
-                <button type="button" onClick={() => setActive("webinars")} className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]">
-                  View all webinars
-                </button>
-              </div>
-              <div className="mt-5 space-y-3">
-                {webinars.slice(0, 5).map((webinar) => (
-                  <div key={webinar.webinarId} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6EDF3] bg-[#F8FBFF] px-4 py-4">
-                    <div>
-                      <p className="text-sm font-semibold text-[#1F2A37]">{webinar.title || "(Untitled webinar)"}</p>
-                      <p className="mt-1 text-xs text-[#6B7280]">/{webinar.slug} | Updated {formatDateTime(webinar.updatedAt)}</p>
-                    </div>
-	                    <div className="flex flex-wrap gap-2">
-	                      <Link href={`/admin/webinars/${webinar.webinarId}`} className="rounded-lg bg-[#2F6FA3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3E82BD]">Edit</Link>
-	                      <Link href={`/admin/webinars/${webinar.webinarId}/preview`} className="rounded-lg border border-[#2F6FA3] bg-white px-3 py-1.5 text-xs font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]">Preview</Link>
-                        <Link href={`/admin/webinars/${webinar.webinarId}/replay-preview`} className="rounded-lg border border-[#F58220] bg-white px-3 py-1.5 text-xs font-semibold text-[#F58220] hover:bg-[#FFF4EA]">Replay Preview</Link>
-	                    </div>
-	                  </div>
-	                ))}
-                {webinars.length === 0 ? <div className="rounded-2xl border border-dashed border-[#E6EDF3] bg-[#F8FBFF] px-4 py-8 text-sm text-[#6B7280]">No webinars yet. Create your first webinar to start using the dashboard.</div> : null}
-              </div>
+          <section className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                eyebrow="Live now"
+                title={liveCount ? `${liveCount} active session${liveCount === 1 ? "" : "s"}` : "No active sessions"}
+                detail="Monitor current attendees and chat in real time."
+                accent="blue"
+              />
+              <SummaryCard
+                eyebrow="Upcoming"
+                title={`${upcomingCount} tracked webinar${upcomingCount === 1 ? "" : "s"}`}
+                detail="Scheduled and in-progress sessions ready for follow-up."
+                accent="orange"
+              />
+              <SummaryCard
+                eyebrow="Registrants"
+                title={`${registrants.length} total leads`}
+                detail="All registrations collected across webinars."
+                accent="slate"
+              />
+              <SummaryCard
+                eyebrow="Needs follow-up"
+                title={`${followUpCount} not yet attended`}
+                detail="Use registrants and activity log to re-engage them."
+                accent="blue"
+              />
             </div>
 
-            <div className="space-y-6">
-              <section className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Quick Actions</p>
-                <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Move faster</h2>
-                <div className="mt-5 grid gap-3">
-                  <QuickAction title="Create webinar" description="Set up a new registration and live experience." href="/admin/webinars/new" variant="primary" />
-                  <QuickAction title="Scheduled webinars" description="Check the next live date without opening each webinar." onClick={() => setActive("scheduled-webinars")} />
-                  <QuickAction title="Open activity log" description="Review scheduled, live, and completed webinar sessions." onClick={() => setActive("activity-log")} />
-                  <QuickAction title="Open live monitor" description="Inspect active sessions, viewers, and real-time chat." onClick={() => setActive("live-monitor")} />
-                  <QuickAction title="View registrants" description="Filter attendee records by webinar and date." onClick={() => setActive("registrants")} variant="accent" />
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
+              <div className="rounded-[28px] border border-[#DCE6EE] bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E6EDF3] pb-5">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Recent Webinars</p>
+                    <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Latest webinar activity</h2>
+                    <p className="mt-2 text-sm text-[#6B7280]">Updated {formatDateTime(latestUpdate)}.</p>
+                  </div>
+                  <button type="button" onClick={() => setActive("webinars")} className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]">
+                    View all webinars
+                  </button>
                 </div>
-              </section>
-              <section className="rounded-2xl border border-[#E6EDF3] bg-white p-6 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">System Status</p>
-                <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Readiness snapshot</h2>
                 <div className="mt-5 space-y-3">
-                  <StatusRow label="Live sessions" value={activeSessions.length ? `${activeSessions.length} running` : "No live sessions"} />
-                  <StatusRow label="Upcoming webinars" value={`${scheduledRows.filter((row) => row.status !== "Completed").length} tracked`} />
-                  <StatusRow label="Latest update" value={formatDateTime(latestUpdate)} />
-                  <StatusRow label="Registrants requiring follow-up" value={`${Math.max(registrants.length - attendedCount, 0)} not yet attended`} />
+                  {webinars.slice(0, 5).map((webinar) => (
+                    <div key={webinar.webinarId} className="rounded-3xl border border-[#E6EDF3] bg-[linear-gradient(180deg,#FBFDFF_0%,#F4F8FC_100%)] p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-base font-semibold text-[#1F2A37]" title={webinar.title || "(Untitled webinar)"}>
+                            {webinar.title || "(Untitled webinar)"}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-[#6B7280]" title={`/${webinar.slug} | Updated ${formatDateTime(webinar.updatedAt)}`}>
+                            /{webinar.slug} | Updated {formatDateTime(webinar.updatedAt)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Link href={`/admin/webinars/${webinar.webinarId}`} className="rounded-lg bg-[#2F6FA3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3E82BD]">Edit</Link>
+                          <Link href={`/admin/webinars/${webinar.webinarId}/preview`} className="rounded-lg border border-[#2F6FA3] bg-white px-3 py-1.5 text-xs font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]">Preview</Link>
+                          <Link href={`/admin/webinars/${webinar.webinarId}/replay-preview`} className="rounded-lg border border-[#F58220] bg-white px-3 py-1.5 text-xs font-semibold text-[#F58220] hover:bg-[#FFF4EA]">Replay Preview</Link>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {webinars.length === 0 ? <div className="rounded-2xl border border-dashed border-[#E6EDF3] bg-[#F8FBFF] px-4 py-8 text-sm text-[#6B7280]">No webinars yet. Create your first webinar to start using the dashboard.</div> : null}
                 </div>
-              </section>
+              </div>
+
+              <div className="space-y-6">
+                <section className="rounded-[28px] border border-[#DCE6EE] bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
+                  <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">Quick Actions</p>
+                  <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Move faster</h2>
+                  <div className="mt-5 grid gap-3">
+                    <QuickAction title="Create webinar" description="Set up a new registration and live experience." href="/admin/webinars/new" variant="primary" />
+                    <QuickAction title="Scheduled webinars" description="Check the next live date without opening each webinar." onClick={() => setActive("scheduled-webinars")} />
+                    <QuickAction title="Open activity log" description="Review scheduled, live, and completed webinar sessions." onClick={() => setActive("activity-log")} />
+                    <QuickAction title="Open live monitor" description="Inspect active sessions, viewers, and real-time chat." onClick={() => setActive("live-monitor")} />
+                    <QuickAction title="View registrants" description="Filter attendee records by webinar and date." onClick={() => setActive("registrants")} variant="accent" />
+                  </div>
+                </section>
+                <section className="rounded-[28px] border border-[#DCE6EE] bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
+                  <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">System Status</p>
+                  <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Readiness snapshot</h2>
+                  <div className="mt-5 space-y-3">
+                    <StatusRow label="Live sessions" value={liveCount ? `${liveCount} running` : "No live sessions"} />
+                    <StatusRow label="Upcoming webinars" value={`${upcomingCount} tracked`} />
+                    <StatusRow label="Latest update" value={formatDateTime(latestUpdate)} />
+                    <StatusRow label="Registrants requiring follow-up" value={`${followUpCount} not yet attended`} />
+                  </div>
+                </section>
+              </div>
             </div>
           </section>
         ) : null}
@@ -553,7 +600,7 @@ export default function AdminDashboardClient({
                                     {row.registrants.map((registrant) => (
                                       <tr key={registrant.registrationId} className="border-t border-[#E6EDF3]">
                                         <td className="px-4 py-3 text-[#1F2A37]">{registrant.fullName}</td>
-                                        <td className="px-4 py-3 text-[#6B7280]">{registrant.email || "-"}</td>
+                                        <td className="px-4 py-3"><EmailCell email={registrant.email} /></td>
                                       </tr>
                                     ))}
                                     {row.registrants.length === 0 ? (
@@ -665,7 +712,7 @@ export default function AdminDashboardClient({
                 <tbody>
                   {visibleRegistrants.map((row) => (
                     <tr key={row.registrationId} className="border-t border-[#E6EDF3]">
-                      <td className="px-6 py-4"><div className="font-medium text-[#1F2A37]">{row.fullName}</div><div className="text-xs text-[#6B7280]">{row.email || "-"}</div></td>
+                      <td className="px-6 py-4"><div className="font-medium text-[#1F2A37]">{row.fullName}</div><EmailCell email={row.email} className="mt-1 max-w-[240px] text-xs" /></td>
                       <td className="px-6 py-4"><div className="font-medium text-[#1F2A37]">{row.webinarTitle}</div>{row.webinarSlug ? <div className="font-mono text-xs text-[#6B7280]">/{row.webinarSlug}</div> : null}</td>
                       <td className="px-6 py-4 text-[#6B7280]">{row.createdAt ? toDateInputValue(row.createdAt) : "-"}</td>
                       <td className="px-6 py-4 text-[#6B7280]">{row.watchedMinutesEstimate !== null ? `${row.watchedMinutesEstimate} min` : "-"}</td>
@@ -746,8 +793,10 @@ function ActivityRow({
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replyStatus, setReplyStatus] = useState<string | null>(null);
+  const [showReplyEditor, setShowReplyEditor] = useState(false);
   const countLabel = row.status === "Scheduled" ? "registrant" : "viewer";
   const countValue = row.status === "Scheduled" ? row.totalRegistrants : row.totalViewers;
+  const canReply = row.status !== "Scheduled" && Boolean(row.timezoneGroupKey) && Boolean(row.sessionId);
 
   async function sendReply() {
     const senderName = replyName.trim();
@@ -809,47 +858,62 @@ function ActivityRow({
 	        <tr className="border-t border-[#E6EDF3] bg-[#FCFDFE]">
 	          <td className="px-6 py-5" colSpan={8}>
 	            <div className="space-y-4">
-                <div className="rounded-2xl border border-[#D6EAF8] bg-white p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-[#1F2A37]">Session Reply</div>
-                      <div className="mt-1 text-xs text-[#6B7280]">
-                        Session timezone: {row.timezoneGroupKey || "Unknown"} {row.status === "Completed" ? "| Post-webinar reply" : ""}
-                      </div>
-                    </div>
-                    <StatusPill status={row.status} />
-                  </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto]">
-                    <input
-                      value={replyName}
-                      onChange={(event) => setReplyName(event.target.value)}
-                      placeholder="Host"
-                      className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
-                    />
-                    <input
-                      value={replyText}
-                      onChange={(event) => setReplyText(event.target.value)}
-                      placeholder="Reply to this webinar session timezone..."
-                      className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          void sendReply();
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      disabled={replySending || !row.timezoneGroupKey || !row.sessionId}
-                      onClick={() => void sendReply()}
-                      className="rounded-xl bg-[#2F6FA3] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3E82BD] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {replySending ? "Sending..." : row.status === "Completed" ? "Save Reply" : "Send Reply"}
-                    </button>
-                  </div>
-                  {replyStatus ? <p className="mt-2 text-xs text-[#6B7280]">{replyStatus}</p> : null}
-                </div>
 	            <div className="overflow-hidden rounded-2xl border border-[#E6EDF3] bg-white">
-	              <div className="border-b border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm font-semibold text-[#1F2A37]">Registrant Details</div>
+	              <div className="border-b border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-[#1F2A37]">Registrant Details</div>
+                    {canReply ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowReplyEditor((current) => !current)}
+                        className="rounded-xl border border-[#2F6FA3] bg-white px-3 py-1.5 text-xs font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]"
+                      >
+                        {showReplyEditor ? "Hide Reply" : row.status === "Completed" ? "Open Reply" : "Reply"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {showReplyEditor && canReply ? (
+                  <div className="border-b border-[#E6EDF3] bg-white p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-[#1F2A37]">Session Reply</div>
+                        <div className="mt-1 text-xs text-[#6B7280]">
+                          Session timezone: {row.timezoneGroupKey || "Unknown"} {row.status === "Completed" ? "| Post-webinar reply" : ""}
+                        </div>
+                      </div>
+                      <StatusPill status={row.status} />
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto]">
+                      <input
+                        value={replyName}
+                        onChange={(event) => setReplyName(event.target.value)}
+                        placeholder="Host"
+                        className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
+                      />
+                      <input
+                        value={replyText}
+                        onChange={(event) => setReplyText(event.target.value)}
+                        placeholder="Reply to this webinar session timezone..."
+                        className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            void sendReply();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={replySending}
+                        onClick={() => void sendReply()}
+                        className="rounded-xl bg-[#2F6FA3] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3E82BD] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {replySending ? "Sending..." : row.status === "Completed" ? "Save Reply" : "Send Reply"}
+                      </button>
+                    </div>
+                    {replyStatus ? <p className="mt-2 text-xs text-[#6B7280]">{replyStatus}</p> : null}
+                  </div>
+                ) : null}
 		              <table className="min-w-full text-sm">
 	                <thead className="bg-white text-left text-[#6B7280]">
 	                  <tr>
@@ -864,7 +928,7 @@ function ActivityRow({
 	                  {row.viewers.map((viewer) => (
 	                    <tr key={viewer.registrationId} className="border-t border-[#E6EDF3]">
 	                      <td className="px-4 py-3 text-[#1F2A37]">{viewer.fullName}</td>
-	                      <td className="px-4 py-3 text-[#6B7280]">{viewer.email || "-"}</td>
+		                      <td className="px-4 py-3"><EmailCell email={viewer.email} /></td>
 	                      <td className="px-4 py-3 text-[#6B7280]">{viewer.status}</td>
 	                      <td className="px-4 py-3 text-[#6B7280]">{viewer.watchedMinutes !== null ? `${viewer.watchedMinutes} min` : "-"}</td>
                           <td className="px-4 py-3">
@@ -919,6 +983,33 @@ function QuickAction({ title, description, href, onClick, variant = "secondary" 
   const content = <><div className="text-sm font-semibold">{title}</div><div className={`mt-1 text-xs ${variant === "secondary" ? "text-[#6B7280]" : "text-white/85"}`}>{description}</div></>;
   if (href) return <Link href={href} className={`rounded-2xl border px-4 py-4 text-left transition ${className}`}>{content}</Link>;
   return <button type="button" onClick={onClick} className={`w-full rounded-2xl border px-4 py-4 text-left transition ${className}`}>{content}</button>;
+}
+
+function SummaryCard({
+  eyebrow,
+  title,
+  detail,
+  accent,
+}: {
+  eyebrow: string;
+  title: string;
+  detail: string;
+  accent: "blue" | "orange" | "slate";
+}) {
+  const tone =
+    accent === "blue"
+      ? "border-[#D6EAF8] bg-[linear-gradient(180deg,#FDFEFF_0%,#EEF7FF_100%)]"
+      : accent === "orange"
+        ? "border-[#F9DFC7] bg-[linear-gradient(180deg,#FFFEFD_0%,#FFF3E8_100%)]"
+        : "border-[#E6EDF3] bg-[linear-gradient(180deg,#FFFFFF_0%,#F7FAFC_100%)]";
+
+  return (
+    <div className={`rounded-[24px] border p-5 shadow-[0_12px_40px_rgba(15,23,42,0.05)] ${tone}`}>
+      <div className="text-[11px] uppercase tracking-[0.22em] text-[#6B7280]">{eyebrow}</div>
+      <div className="mt-3 text-lg font-semibold text-[#1F2A37]">{title}</div>
+      <p className="mt-2 text-sm text-[#6B7280]">{detail}</p>
+    </div>
+  );
 }
 
 function StatusRow({ label, value }: { label: string; value: string }) {

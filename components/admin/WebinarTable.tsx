@@ -116,6 +116,16 @@ function buildIframeCode(slug: string) {
 </script>`;
 }
 
+function formatUpdatedAt(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
 export default function WebinarTable({ webinars }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const visibleWebinars = webinars.slice(0, 20);
@@ -144,24 +154,35 @@ export default function WebinarTable({ webinars }: Props) {
 
   return (
     <>
-      <div className="mt-6 overflow-hidden rounded-2xl border border-[#E6EDF3] bg-white shadow-sm">
-        <div className="max-h-[620px] overflow-auto">
+      <section className="rounded-2xl border border-[#E6EDF3] bg-white shadow-sm">
+        <div className="border-b border-[#E6EDF3] bg-[#F8FBFF] px-6 py-4">
+          <h2 className="text-xl font-semibold text-[#1F2A37]">Webinar Library</h2>
+          <p className="mt-1 text-sm text-[#6B7280]">Manage registration links, embed code, and page access from one place.</p>
+        </div>
+        <div className="overflow-auto">
           <table className="min-w-full text-sm text-[#1F2A37]">
             <thead className="bg-[#F8FBFF] text-left text-[#6B7280]">
               <tr>
-                <th className="px-4 py-3 font-semibold">Title</th>
-                <th className="px-4 py-3 font-semibold">Slug</th>
-                <th className="px-4 py-3 font-semibold">Registration Link</th>
-                <th className="px-4 py-3 font-semibold">Updated</th>
-                <th className="px-4 py-3 font-semibold">Actions</th>
+                <th className="px-6 py-3 font-semibold">Webinar</th>
+                <th className="px-6 py-3 font-semibold">Registration Access</th>
+                <th className="px-6 py-3 font-semibold">Last Updated</th>
+                <th className="px-6 py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
               {visibleWebinars.map((webinar) => (
                 <tr key={webinar.webinarId} className="border-t border-[#E6EDF3]">
-                  <td className="px-4 py-3 font-medium text-[#1F2A37]">{webinar.title || "(Untitled)"}</td>
-                  <td className="px-4 py-3 font-mono text-[#6B7280]">{webinar.slug}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-6 py-4">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-[#1F2A37]" title={webinar.title || "(Untitled webinar)"}>
+                        {webinar.title || "(Untitled webinar)"}
+                      </div>
+                      <div className="mt-1 truncate font-mono text-xs text-[#6B7280]" title={`/${webinar.slug}`}>
+                        /{webinar.slug}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -187,10 +208,10 @@ export default function WebinarTable({ webinars }: Props) {
                       </a>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-[#6B7280]">
-                    {webinar.updatedAt ? new Date(webinar.updatedAt).toLocaleString() : "-"}
+                  <td className="px-6 py-4 text-[#6B7280]">
+                    {formatUpdatedAt(webinar.updatedAt)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/admin/webinars/${webinar.webinarId}`}
@@ -230,7 +251,7 @@ export default function WebinarTable({ webinars }: Props) {
               ))}
               {visibleWebinars.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-[#6B7280]" colSpan={5}>
+                  <td className="px-6 py-8 text-[#6B7280]" colSpan={4}>
                     No webinars yet.
                   </td>
                 </tr>
@@ -238,7 +259,7 @@ export default function WebinarTable({ webinars }: Props) {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
       {message ? (
         <div className="fixed bottom-6 right-6 rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm font-medium text-[#1F2A37] shadow-lg">
           {message}
