@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,9 @@ function safeSlugPart(value: string) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("manage_settings");
+    if (!auth.ok) return auth.response;
+
     const formData = await request.formData();
     const file = formData.get("file");
 

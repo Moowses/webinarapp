@@ -20,6 +20,8 @@ type Props = {
   displayName: string;
   initialAccessRevoked?: boolean;
   revokedRedirectUrl?: string;
+  replayMode?: boolean;
+  leaveHref?: string;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -58,16 +60,18 @@ export default function LiveRoom({
   displayName,
   initialAccessRevoked = false,
   revokedRedirectUrl = "https://www.google.com",
+  replayMode = false,
+  leaveHref,
 }: Props) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hasInitializedRef = useRef(false);
 
-  const [isAudioJoined, setIsAudioJoined] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isAudioJoined, setIsAudioJoined] = useState(replayMode);
+  const [isMuted, setIsMuted] = useState(!replayMode);
   const [isChatOpen, setIsChatOpen] = useState(() => shouldDefaultChatOpen());
   const [autoJoinEnabled, setAutoJoinEnabled] = useState(() => readAutoJoinSetting());
-  const [joinModalOpen, setJoinModalOpen] = useState(() => !readAutoJoinSetting());
+  const [joinModalOpen, setJoinModalOpen] = useState(() => (replayMode ? false : !readAutoJoinSetting()));
   const [playbackSec, setPlaybackSec] = useState(clamp(initialPlaybackSec, 0, durationSec));
   const [accessRevoked, setAccessRevoked] = useState(initialAccessRevoked);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
@@ -97,7 +101,7 @@ export default function LiveRoom({
   }, [scheduledStartISO, sessionId, webinarId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (replayMode || typeof window === "undefined") return;
 
     const body = JSON.stringify({ token: accessToken });
 
@@ -155,7 +159,7 @@ export default function LiveRoom({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       leave();
     };
-  }, [accessToken, router, webinarSlug]);
+  }, [accessToken, replayMode, router, webinarSlug]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -178,7 +182,7 @@ export default function LiveRoom({
     };
 
     const onPause = () => {
-      if (!video.ended) {
+      if (!replayMode && !video.ended) {
         void video.play().catch(() => {});
       }
     };
@@ -195,7 +199,7 @@ export default function LiveRoom({
       video.removeEventListener("timeupdate", onTimeUpdate);
       video.removeEventListener("pause", onPause);
     };
-  }, [durationSec, initialPlaybackSec, isMuted]);
+  }, [durationSec, initialPlaybackSec, isMuted, replayMode]);
 
   function joinWithComputerAudio() {
     setIsAudioJoined(true);
@@ -225,6 +229,15 @@ export default function LiveRoom({
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
   }, [playbackSec]);
 
+  function handleLeave() {
+    const target = leaveHref?.trim() || `/w/${webinarSlug}`;
+    if (/^https?:\/\//i.test(target)) {
+      window.location.href = target;
+      return;
+    }
+    router.push(target);
+  }
+
   return (
     <main className="relative h-[100dvh] w-screen overflow-hidden bg-[#0b0f19] text-slate-100 md:h-screen">
       {accessRevoked ? (
@@ -241,12 +254,14 @@ export default function LiveRoom({
         </div>
       ) : null}
 
-      <JoinAudioModal
-        open={joinModalOpen}
-        onJoinAudio={joinWithComputerAudio}
-        autoJoinEnabled={autoJoinEnabled}
-        setAutoJoinEnabled={setAutoJoinEnabled}
-      />
+      {!replayMode ? (
+        <JoinAudioModal
+          open={joinModalOpen}
+          onJoinAudio={joinWithComputerAudio}
+          autoJoinEnabled={autoJoinEnabled}
+          setAutoJoinEnabled={setAutoJoinEnabled}
+        />
+      ) : null}
 
       <div className="relative flex h-full min-h-0 flex-col md:flex-row">
         <section
@@ -261,14 +276,18 @@ export default function LiveRoom({
             autoPlay
             playsInline
             muted={isMuted}
-            controls={false}
+            controls={replayMode}
             disablePictureInPicture
           />
           <div className="pointer-events-none absolute left-4 top-4 rounded-2xl bg-black/70 px-3 py-2 text-xs font-semibold backdrop-blur">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold text-white ${
+                  replayMode ? "bg-[#2F6FA3]" : "bg-red-600"
+                }`}
+              >
                 <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                LIVE
+                {replayMode ? "REPLAY" : "LIVE"}
               </span>
               <span className="rounded-full bg-black/50 px-2 py-0.5 text-[11px]">
                 {elapsedLabel}
@@ -284,12 +303,21 @@ export default function LiveRoom({
               </span>
             </div>
           </div>
-          <div className="absolute bottom-20 right-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-200">
-            <span className="rounded-full border border-slate-600 bg-black/60 px-2.5 py-1">
-              TZ <span className="font-mono">{timezoneGroupKey}</span>
-            </span>
-            {!isAudioJoined ? (
-              <button
+	          <div className="absolute bottom-20 right-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-200">
+	            <span className="rounded-full border border-slate-600 bg-black/60 px-2.5 py-1">
+	              TZ <span className="font-mono">{timezoneGroupKey}</span>
+	            </span>
+              {replayMode ? (
+                <button
+                  type="button"
+                  onClick={() => setIsChatOpen((value) => !value)}
+                  className="rounded-full border border-white/20 bg-black/60 px-2.5 py-1 text-white hover:bg-black/75"
+                >
+                  {isChatOpen ? "Hide Chat" : "Show Chat"}
+                </button>
+              ) : null}
+	            {!replayMode && !isAudioJoined ? (
+	              <button
                 type="button"
                 onClick={() => setJoinModalOpen(true)}
                 className="rounded-full border border-blue-500 bg-black/60 px-2.5 py-1 text-blue-300"
@@ -298,12 +326,34 @@ export default function LiveRoom({
               </button>
             ) : null}
           </div>
+
+	          {replayMode && isChatOpen && !isMobileViewport ? (
+	            <aside className="absolute inset-y-0 right-0 z-30 hidden w-[380px] overflow-hidden border-l border-white/10 bg-[rgba(7,12,24,0.14)] shadow-[-16px_0_40px_rgba(2,6,23,0.28)] backdrop-blur-sm md:block">
+	              <CombinedChatStream
+	                className="h-full"
+	                accessToken={accessToken}
+                webinarId={webinarId}
+                sessionId={sessionId}
+                scheduledStartISO={scheduledStartISO}
+                playbackSec={playbackSec}
+                initialDisplayName={displayName}
+	                title="Session Chat"
+	                onRequestClose={() => setIsChatOpen(false)}
+	                mobileOverlay
+                  forceShowCloseButton
+	                readOnly
+	                readOnlyLabel="Replay mode. You can read this session chat, but you cannot send messages from the replay link."
+	              />
+            </aside>
+          ) : null}
         </section>
 
         {isChatOpen ? (
           <aside
             className={`${
-              isMobileViewport
+              replayMode && !isMobileViewport
+                ? "hidden"
+                : isMobileViewport
                 ? "relative z-30 min-h-0 flex-1 bg-white"
                 : "relative z-30 min-h-0 bg-white md:inset-y-0 md:right-0 md:left-auto md:z-20 md:w-[340px] md:flex-none md:border-l md:border-slate-200 lg:relative lg:w-[360px] lg:pb-16"
             }`}
@@ -316,9 +366,11 @@ export default function LiveRoom({
               scheduledStartISO={scheduledStartISO}
               playbackSec={playbackSec}
               initialDisplayName={displayName}
-              title="Chat"
+              title={replayMode ? "Session Chat" : "Chat"}
               onRequestClose={() => setIsChatOpen(false)}
-              mobileOverlay={false}
+              mobileOverlay={replayMode}
+              readOnly={replayMode}
+              readOnlyLabel="Replay mode. You can read this session chat, but you cannot send messages from the replay link."
             />
           </aside>
         ) : null}
@@ -329,7 +381,7 @@ export default function LiveRoom({
         onToggleChat={() => setIsChatOpen((v) => !v)}
         isMuted={isMuted}
         onToggleMute={toggleMute}
-        onLeave={() => router.push(`/w/${webinarSlug}`)}
+        onLeave={handleLeave}
         className={isMobileViewport && isChatOpen ? "hidden" : undefined}
       />
     </main>

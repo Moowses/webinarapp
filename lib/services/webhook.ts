@@ -10,6 +10,9 @@ type BaseWebhookInput = {
   userTimeZone: string;
   isMobile: boolean;
   scheduledStartISO: string;
+  scheduledEndISO?: string;
+  liveWindowEndISO?: string;
+  replayExpiryHours?: number;
 };
 
 type RegistrationWebhookInput = BaseWebhookInput;
@@ -38,6 +41,9 @@ export type RegistrationWebhookPayload = {
   confirmationLinkMobile: string;
   liveLinkDesktop: string;
   liveLinkMobile: string;
+  replayLinkDesktop: string;
+  replayLinkMobile: string;
+  replayExpiresAtISO: string;
   isMobile: boolean;
   astatus: "Registered";
 };
@@ -57,6 +63,9 @@ export type AttendanceWebhookPayload = {
   confirmationLinkMobile: string;
   liveLinkDesktop: string;
   liveLinkMobile: string;
+  replayLinkDesktop: string;
+  replayLinkMobile: string;
+  replayExpiresAtISO: string;
   attendedAtISO: string;
   attendedAtDisplay: string;
   watchedMinutes: number;
@@ -79,6 +88,9 @@ export type NoShowWebhookPayload = {
   confirmationLinkMobile: string;
   liveLinkDesktop: string;
   liveLinkMobile: string;
+  replayLinkDesktop: string;
+  replayLinkMobile: string;
+  replayExpiresAtISO: string;
   noShowAtISO: string;
   noShowAtDisplay: string;
   watchedMinutes: 0;
@@ -156,6 +168,20 @@ function buildLiveLink(baseUrl: string, token: string) {
   return `${baseUrl}/live/${token}`;
 }
 
+function buildReplayLink(baseUrl: string, token: string) {
+  return `${baseUrl}/replay/${token}`;
+}
+
+function buildReplayExpiresAtISO(input: {
+  scheduledStartISO: string;
+  scheduledEndISO?: string;
+  liveWindowEndISO?: string;
+  replayExpiryHours?: number;
+}) {
+  const baseMs = Date.parse(input.liveWindowEndISO || input.scheduledEndISO || input.scheduledStartISO);
+  return new Date(baseMs + (input.replayExpiryHours ?? 72) * 60 * 60 * 1000).toISOString();
+}
+
 export function buildRegistrationWebhookPayload(
   input: RegistrationWebhookInput
 ): RegistrationWebhookPayload {
@@ -173,6 +199,8 @@ export function buildRegistrationWebhookPayload(
     userTimeZone: input.userTimeZone,
   });
   const liveLink = buildLiveLink(baseUrl, input.token);
+  const replayLink = buildReplayLink(baseUrl, input.token);
+  const replayExpiresAtISO = buildReplayExpiresAtISO(input);
 
   return {
     eventType: "registration",
@@ -189,6 +217,9 @@ export function buildRegistrationWebhookPayload(
     confirmationLinkMobile: confirmationLink,
     liveLinkDesktop: liveLink,
     liveLinkMobile: liveLink,
+    replayLinkDesktop: replayLink,
+    replayLinkMobile: replayLink,
+    replayExpiresAtISO,
     isMobile: input.isMobile,
     astatus: "Registered",
   };
@@ -211,6 +242,8 @@ export function buildAttendanceWebhookPayload(
     userTimeZone: input.userTimeZone,
   });
   const liveLink = buildLiveLink(baseUrl, input.token);
+  const replayLink = buildReplayLink(baseUrl, input.token);
+  const replayExpiresAtISO = buildReplayExpiresAtISO(input);
 
   return {
     eventType: "attendance",
@@ -227,6 +260,9 @@ export function buildAttendanceWebhookPayload(
     confirmationLinkMobile: confirmationLink,
     liveLinkDesktop: liveLink,
     liveLinkMobile: liveLink,
+    replayLinkDesktop: replayLink,
+    replayLinkMobile: replayLink,
+    replayExpiresAtISO,
     attendedAtISO: input.attendedAtISO,
     attendedAtDisplay: formatForDisplay(input.attendedAtISO, input.userTimeZone),
     watchedMinutes: Math.max(0, Math.floor(input.watchedMinutes)),
@@ -252,6 +288,8 @@ export function buildNoShowWebhookPayload(
     userTimeZone: input.userTimeZone,
   });
   const liveLink = buildLiveLink(baseUrl, input.token);
+  const replayLink = buildReplayLink(baseUrl, input.token);
+  const replayExpiresAtISO = buildReplayExpiresAtISO(input);
 
   return {
     eventType: "attendance",
@@ -268,6 +306,9 @@ export function buildNoShowWebhookPayload(
     confirmationLinkMobile: confirmationLink,
     liveLinkDesktop: liveLink,
     liveLinkMobile: liveLink,
+    replayLinkDesktop: replayLink,
+    replayLinkMobile: replayLink,
+    replayExpiresAtISO,
     noShowAtISO: input.noShowAtISO,
     noShowAtDisplay: formatForDisplay(input.noShowAtISO, input.userTimeZone),
     watchedMinutes: 0,

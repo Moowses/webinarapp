@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import { NextResponse } from "next/server";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,9 @@ function sanitizeFilename(filename: string): string {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("webinar_edit_video");
+    if (!auth.ok) return auth.response;
+
     const formData = await request.formData();
     const file = formData.get("file");
     const webinarId = String(formData.get("webinarId") ?? "").trim();

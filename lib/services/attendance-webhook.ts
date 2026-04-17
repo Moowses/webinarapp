@@ -51,19 +51,21 @@ export async function sendAttendanceWebhookIfNeeded(registrationId: string) {
     }
 
     tx.update(ref, { attendanceWebhookClaimedAtISO: claimedAtISO });
-    return {
-      webinarId: clean(raw.webinarId),
-      token: clean(raw.token),
+      return {
+        webinarId: clean(raw.webinarId),
+        token: clean(raw.token),
       firstName: clean(raw.firstName),
       lastName: clean(raw.lastName),
       email: clean(raw.email).toLowerCase(),
       phone: clean(raw.phone),
-      userTimeZone: clean(raw.userTimeZone) || "UTC",
-      isMobile: Boolean(raw.isMobile),
-      scheduledStartISO: clean(raw.scheduledStartISO),
-      attendedAtISO: clean(raw.attendedAtISO) || claimedAtISO,
-      watchedMinutes: getWatchedMinutes(raw),
-    };
+        userTimeZone: clean(raw.userTimeZone) || "UTC",
+        isMobile: Boolean(raw.isMobile),
+        scheduledStartISO: clean(raw.scheduledStartISO),
+        scheduledEndISO: clean(raw.scheduledEndISO),
+        liveWindowEndISO: clean(raw.liveWindowEndISO),
+        attendedAtISO: clean(raw.attendedAtISO) || claimedAtISO,
+        watchedMinutes: getWatchedMinutes(raw),
+      };
   });
 
   if (!claimed?.webinarId) return;
@@ -92,6 +94,14 @@ export async function sendAttendanceWebhookIfNeeded(registrationId: string) {
       userTimeZone: claimed.userTimeZone,
       isMobile: claimed.isMobile,
       scheduledStartISO: claimed.scheduledStartISO,
+      scheduledEndISO: claimed.scheduledEndISO,
+      liveWindowEndISO: claimed.liveWindowEndISO,
+      replayExpiryHours:
+        typeof webinar.replayExpiryHours === "number" &&
+        Number.isFinite(webinar.replayExpiryHours) &&
+        webinar.replayExpiryHours > 0
+          ? Math.floor(webinar.replayExpiryHours)
+          : 72,
       attendedAtISO: claimed.attendedAtISO,
       watchedMinutes: claimed.watchedMinutes,
     });
@@ -177,6 +187,8 @@ export async function processDueNoShowWebhooks(limit = NO_SHOW_BATCH_SIZE) {
         userTimeZone: clean(current.userTimeZone) || "UTC",
         isMobile: Boolean(current.isMobile),
         scheduledStartISO: clean(current.scheduledStartISO),
+        scheduledEndISO: clean(current.scheduledEndISO),
+        liveWindowEndISO: clean(current.liveWindowEndISO),
       };
     });
 
@@ -199,6 +211,14 @@ export async function processDueNoShowWebhooks(limit = NO_SHOW_BATCH_SIZE) {
         userTimeZone: claimed.userTimeZone,
         isMobile: claimed.isMobile,
         scheduledStartISO: claimed.scheduledStartISO,
+        scheduledEndISO: claimed.scheduledEndISO,
+        liveWindowEndISO: claimed.liveWindowEndISO,
+        replayExpiryHours:
+          typeof webinar.replayExpiryHours === "number" &&
+          Number.isFinite(webinar.replayExpiryHours) &&
+          webinar.replayExpiryHours > 0
+            ? Math.floor(webinar.replayExpiryHours)
+            : 72,
         noShowAtISO: claimAtISO,
       });
 

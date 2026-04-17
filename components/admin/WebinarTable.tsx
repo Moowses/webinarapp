@@ -213,6 +213,12 @@ export default function WebinarTable({ webinars }: Props) {
                       >
                         View Confirm
                       </Link>
+                      <Link
+                        href={`/admin/webinars/${webinar.webinarId}/replay-preview`}
+                        className="rounded-xl border border-[#F58220] bg-white px-3 py-1.5 text-xs font-semibold text-[#F58220] transition hover:bg-[#FFF4EA]"
+                      >
+                        Replay Preview
+                      </Link>
                     </div>
                   </td>
                 </tr>

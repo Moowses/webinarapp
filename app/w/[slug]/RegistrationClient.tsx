@@ -30,6 +30,14 @@ type CountdownState = {
   seconds: string;
 };
 
+const DEFAULT_COUNTDOWN_STATE: CountdownState = {
+  heading: "Loading schedule...",
+  days: "00",
+  hours: "00",
+  minutes: "00",
+  seconds: "00",
+};
+
 const timezoneSubscribe = () => () => {};
 const getServerTimezoneSnapshot = () => "UTC";
 const getClientTimezoneSnapshot = () =>
@@ -195,14 +203,8 @@ export default function RegistrationClient({
     getClientTimezoneSnapshot,
     getServerTimezoneSnapshot
   );
-  const [isMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  });
   const parentModalFallbackTimer = useRef<number | null>(null);
-  const [countdown, setCountdown] = useState<CountdownState>(() =>
-    computeCountdownState(new Date(), schedule, getClientTimezoneSnapshot())
-  );
+  const [countdown, setCountdown] = useState<CountdownState>(DEFAULT_COUNTDOWN_STATE);
 
   useEffect(() => {
     const update = () => {
@@ -319,6 +321,9 @@ export default function RegistrationClient({
 
     startTransition(async () => {
       try {
+        const isMobile =
+          typeof navigator !== "undefined" &&
+          /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const result = await registerForWebinarAction({
           slug,
           firstName,
@@ -328,12 +333,14 @@ export default function RegistrationClient({
           userTimeZone,
           isMobile,
         });
-        if (popup && window.parent !== window) {
-          window.top?.location.assign(`${window.location.origin}/confirm/${result.token}`);
+        const confirmationUrl = `${window.location.origin}/confirm/${result.token}`;
+        if (window.top && window.top !== window) {
+          window.top.location.assign(confirmationUrl);
           return;
         }
         router.push(`/confirm/${result.token}`);
-      } catch {
+      } catch (submitError) {
+        console.error("Webinar registration failed", { slug, submitError });
         setError("Registration failed. Please try again.");
       }
     });

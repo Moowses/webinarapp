@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation";
+import { getCurrentSessionUser } from "@/lib/auth/server";
 
-export default function Home() {
-  redirect("/admin");
+export default async function Home() {
+  const sessionUser = await getCurrentSessionUser();
+  if (!sessionUser) {
+    redirect("/login");
+  }
+  redirect(sessionUser.effectivePermissions.includes("view_admin") ? "/admin" : "/account");
 }

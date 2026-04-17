@@ -42,10 +42,7 @@ export default async function LivePage({ params }: Props) {
   }
 
   if (now > endMs) {
-    if (webinar.redirect?.enabled && webinar.redirect.url) {
-      redirect(webinar.redirect.url);
-    }
-    redirect(`/w/${registration.webinarSlug}?expired=1`);
+    redirect(`/replay/${token}`);
   }
 
   await markRegistrationAttendedAction(registration.id);

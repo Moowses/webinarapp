@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import ConfirmationPageEditorForm from "@/components/admin/ConfirmationPageEditorForm";
 import { getWebinarAction, updateWebinarAction } from "@/app/actions/webinar-actions";
+import { requireAdminUser } from "@/lib/auth/server";
 
 type Props = {
   params: Promise<{ webinarId: string }>;
@@ -10,6 +11,7 @@ type Props = {
 export const dynamic = "force-dynamic";
 
 export default async function EditConfirmationPage({ params }: Props) {
+  await requireAdminUser("webinar_edit_confirmation_page", "/admin");
   const { webinarId } = await params;
   const webinar = await getWebinarAction(webinarId);
 

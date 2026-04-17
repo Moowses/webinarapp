@@ -28,7 +28,7 @@ export default async function ConfirmPage({ params }: Props) {
   const lateGraceDeadlineMs = startMs + webinar.lateGraceMinutes * 60 * 1000;
 
   if (now > endMs) {
-    redirect(`/w/${registration.webinarSlug}?expired=1`);
+    redirect(`/replay/${token}`);
   }
   if (!registration.attendedLive && now > lateGraceDeadlineMs) {
     redirect(`/w/${registration.webinarSlug}?late=1`);

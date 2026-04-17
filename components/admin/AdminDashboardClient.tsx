@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import AdminSidebar from "@/components/admin/AdminSidebar";
 import type { WebinarListItem } from "@/app/actions/webinar-actions";
 import type {
   ActiveLiveSessionRow,
@@ -22,6 +23,12 @@ type Props = {
   registrants: AdminRegistrantRow[];
   activeSessions: ActiveLiveSessionRow[];
   activeViewers: ActiveLiveViewerRow[];
+  currentUser: {
+    displayName: string;
+    email: string;
+    canManageSettings: boolean;
+    canManageUsers: boolean;
+  };
 };
 
 type SectionKey =
@@ -51,6 +58,8 @@ type ActivityLogRow = {
   webinarId: string;
   webinarSlug: string;
   webinarTitle: string;
+  timezoneGroupKey: string;
+  sessionId: string;
   scheduledAtISO: string;
   startedAtISO: string | null;
   completedAtISO: string | null;
@@ -237,6 +246,8 @@ function computeActivityRows(registrants: AdminRegistrantRow[], activeSessions: 
         webinarId: row.webinarId,
         webinarSlug: row.webinarSlug,
         webinarTitle: row.webinarTitle,
+        timezoneGroupKey: row.timezoneGroupKey,
+        sessionId: row.sessionId ?? "",
         scheduledAtISO: row.scheduledStartISO,
         startedAtISO: row.attendedAtISO ?? (Number.isFinite(scheduledMs) && scheduledMs <= nowMs ? row.scheduledStartISO : null),
         completedAtISO: !isLive && Number.isFinite(endMs) && endMs <= nowMs ? row.scheduledEndISO : null,
@@ -250,6 +261,12 @@ function computeActivityRows(registrants: AdminRegistrantRow[], activeSessions: 
     }
 
     const current = map.get(key)!;
+    if (!current.timezoneGroupKey && row.timezoneGroupKey) {
+      current.timezoneGroupKey = row.timezoneGroupKey;
+    }
+    if (!current.sessionId && row.sessionId) {
+      current.sessionId = row.sessionId;
+    }
     const viewerStatus = getRegistrantLifecycleStatus(row, nowMs);
     current.totalRegistrants += 1;
     current.viewers.push({
@@ -283,7 +300,31 @@ function computeActivityRows(registrants: AdminRegistrantRow[], activeSessions: 
     .sort((a, b) => Date.parse(b.scheduledAtISO) - Date.parse(a.scheduledAtISO));
 }
 
-export default function AdminDashboardClient({ webinars, registrants, activeSessions, activeViewers }: Props) {
+async function sendAdminSessionMessage(input: {
+  webinarId: string;
+  sessionId: string;
+  timezoneGroupKey: string;
+  senderName: string;
+  text: string;
+}) {
+  const response = await fetch("/api/admin/live-chat/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error || "Failed to send message");
+  }
+}
+
+export default function AdminDashboardClient({
+  webinars,
+  registrants,
+  activeSessions,
+  activeViewers,
+  currentUser,
+}: Props) {
   const [active, setActive] = useState<SectionKey>("dashboard");
   const [selectedWebinar, setSelectedWebinar] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -379,35 +420,24 @@ export default function AdminDashboardClient({ webinars, registrants, activeSess
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="h-fit rounded-2xl border border-[#E6EDF3] bg-white p-5 shadow-sm">
-        <div className="border-b border-[#E6EDF3] pb-4">
-          <p className="text-xs uppercase tracking-[0.22em] text-[#6B7280]">WebinarAPP</p>
-          <h2 className="mt-2 text-xl font-semibold text-[#1F2A37]">Admin Navigation</h2>
-          <p className="mt-2 text-sm text-[#6B7280]">Monitor operations, manage webinar assets, and review attendee activity.</p>
-        </div>
-        <div className="mt-4 space-y-2">
-          {navItems.map((item) => {
-            const isActive = active === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setActive(item.key)}
-                className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                  isActive ? "border-[#D6EAF8] bg-[#E8F5FF] text-[#2F6FA3]" : "border-transparent bg-white text-[#1F2A37] hover:bg-[#F8FBFF]"
-                }`}
-              >
-                <div className="text-xs uppercase tracking-[0.18em] text-[#6B7280]">{item.eyebrow}</div>
-                <div className="mt-1 text-sm font-semibold">{item.label}</div>
-              </button>
-            );
-          })}
-          <Link href="/admin/settings" className="block w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-left text-[#1F2A37] transition hover:bg-[#F8FBFF]">
-            <div className="text-xs uppercase tracking-[0.18em] text-[#6B7280]">Branding and tab</div>
-            <div className="mt-1 text-sm font-semibold">Settings</div>
-          </Link>
-        </div>
-      </aside>
+      <AdminSidebar currentPath="/admin" currentUser={currentUser}>
+        {navItems.map((item) => {
+          const isActive = active === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setActive(item.key)}
+              className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                isActive ? "border-[#D6EAF8] bg-[#E8F5FF] text-[#2F6FA3]" : "border-transparent bg-white text-[#1F2A37] hover:bg-[#F8FBFF]"
+              }`}
+            >
+              <div className="text-xs uppercase tracking-[0.18em] text-[#6B7280]">{item.eyebrow}</div>
+              <div className="mt-1 text-sm font-semibold">{item.label}</div>
+            </button>
+          );
+        })}
+      </AdminSidebar>
 
       <section className="space-y-6">
         {active === "dashboard" ? (
@@ -430,12 +460,13 @@ export default function AdminDashboardClient({ webinars, registrants, activeSess
                       <p className="text-sm font-semibold text-[#1F2A37]">{webinar.title || "(Untitled webinar)"}</p>
                       <p className="mt-1 text-xs text-[#6B7280]">/{webinar.slug} | Updated {formatDateTime(webinar.updatedAt)}</p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Link href={`/admin/webinars/${webinar.webinarId}`} className="rounded-lg bg-[#2F6FA3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3E82BD]">Edit</Link>
-                      <Link href={`/admin/webinars/${webinar.webinarId}/preview`} className="rounded-lg border border-[#2F6FA3] bg-white px-3 py-1.5 text-xs font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]">Preview</Link>
-                    </div>
-                  </div>
-                ))}
+	                    <div className="flex flex-wrap gap-2">
+	                      <Link href={`/admin/webinars/${webinar.webinarId}`} className="rounded-lg bg-[#2F6FA3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3E82BD]">Edit</Link>
+	                      <Link href={`/admin/webinars/${webinar.webinarId}/preview`} className="rounded-lg border border-[#2F6FA3] bg-white px-3 py-1.5 text-xs font-semibold text-[#2F6FA3] hover:bg-[#F0F7FF]">Preview</Link>
+                        <Link href={`/admin/webinars/${webinar.webinarId}/replay-preview`} className="rounded-lg border border-[#F58220] bg-white px-3 py-1.5 text-xs font-semibold text-[#F58220] hover:bg-[#FFF4EA]">Replay Preview</Link>
+	                    </div>
+	                  </div>
+	                ))}
                 {webinars.length === 0 ? <div className="rounded-2xl border border-dashed border-[#E6EDF3] bg-[#F8FBFF] px-4 py-8 text-sm text-[#6B7280]">No webinars yet. Create your first webinar to start using the dashboard.</div> : null}
               </div>
             </div>
@@ -711,8 +742,57 @@ function ActivityRow({
   getConfirmationLink: (token: string | null) => string | null;
   getLiveLink: (token: string | null) => string | null;
 }) {
+  const [replyName, setReplyName] = useState("Host");
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyStatus, setReplyStatus] = useState<string | null>(null);
   const countLabel = row.status === "Scheduled" ? "registrant" : "viewer";
   const countValue = row.status === "Scheduled" ? row.totalRegistrants : row.totalViewers;
+
+  async function sendReply() {
+    const senderName = replyName.trim();
+    const text = replyText.trim();
+
+    if (!row.timezoneGroupKey) {
+      setReplyStatus("Timezone group is missing for this session.");
+      return;
+    }
+    if (!row.sessionId) {
+      setReplyStatus("Session ID is missing for this session.");
+      return;
+    }
+    if (!senderName) {
+      setReplyStatus("Sender name is required.");
+      return;
+    }
+    if (!text) {
+      setReplyStatus("Reply text is required.");
+      return;
+    }
+
+    setReplySending(true);
+    setReplyStatus(null);
+    try {
+      await sendAdminSessionMessage({
+        webinarId: row.webinarId,
+        sessionId: row.sessionId,
+        timezoneGroupKey: row.timezoneGroupKey,
+        senderName,
+        text,
+      });
+      setReplyText("");
+      setReplyStatus(
+        row.status === "Completed"
+          ? `Reply saved for timezone session ${row.timezoneGroupKey}.`
+          : `Reply sent to timezone session ${row.timezoneGroupKey}.`
+      );
+    } catch (error) {
+      setReplyStatus(error instanceof Error ? error.message : "Failed to send reply");
+    } finally {
+      setReplySending(false);
+    }
+  }
+
   return (
     <>
       <tr className="border-t border-[#E6EDF3]">
@@ -725,12 +805,52 @@ function ActivityRow({
         <td className="px-6 py-4 text-[#6B7280]">{row.totalAttended}</td>
         <td className="px-6 py-4 text-[#6B7280]">{row.totalNoShows}</td>
       </tr>
-      {expanded ? (
-        <tr className="border-t border-[#E6EDF3] bg-[#FCFDFE]">
-          <td className="px-6 py-5" colSpan={8}>
-            <div className="overflow-hidden rounded-2xl border border-[#E6EDF3] bg-white">
-              <div className="border-b border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm font-semibold text-[#1F2A37]">Registrant Details</div>
-	              <table className="min-w-full text-sm">
+	      {expanded ? (
+	        <tr className="border-t border-[#E6EDF3] bg-[#FCFDFE]">
+	          <td className="px-6 py-5" colSpan={8}>
+	            <div className="space-y-4">
+                <div className="rounded-2xl border border-[#D6EAF8] bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-[#1F2A37]">Session Reply</div>
+                      <div className="mt-1 text-xs text-[#6B7280]">
+                        Session timezone: {row.timezoneGroupKey || "Unknown"} {row.status === "Completed" ? "| Post-webinar reply" : ""}
+                      </div>
+                    </div>
+                    <StatusPill status={row.status} />
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto]">
+                    <input
+                      value={replyName}
+                      onChange={(event) => setReplyName(event.target.value)}
+                      placeholder="Host"
+                      className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
+                    />
+                    <input
+                      value={replyText}
+                      onChange={(event) => setReplyText(event.target.value)}
+                      placeholder="Reply to this webinar session timezone..."
+                      className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          void sendReply();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={replySending || !row.timezoneGroupKey || !row.sessionId}
+                      onClick={() => void sendReply()}
+                      className="rounded-xl bg-[#2F6FA3] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3E82BD] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {replySending ? "Sending..." : row.status === "Completed" ? "Save Reply" : "Send Reply"}
+                    </button>
+                  </div>
+                  {replyStatus ? <p className="mt-2 text-xs text-[#6B7280]">{replyStatus}</p> : null}
+                </div>
+	            <div className="overflow-hidden rounded-2xl border border-[#E6EDF3] bg-white">
+	              <div className="border-b border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm font-semibold text-[#1F2A37]">Registrant Details</div>
+		              <table className="min-w-full text-sm">
 	                <thead className="bg-white text-left text-[#6B7280]">
 	                  <tr>
 	                    <th className="px-4 py-3 font-semibold">Full Name</th>
@@ -779,12 +899,13 @@ function ActivityRow({
                           </td>
 	                    </tr>
 	                  ))}
-	                </tbody>
-              </table>
-            </div>
-          </td>
-        </tr>
-      ) : null}
+		                </tbody>
+	              </table>
+	            </div>
+              </div>
+	          </td>
+	        </tr>
+	      ) : null}
     </>
   );
 }

@@ -31,6 +31,7 @@ type WebinarRecord = {
   title: string;
   videoPublicPath: string;
   durationSec: number;
+  replayExpiryHours: number;
   schedule: WebinarSchedule;
   webhook: WebinarWebhook;
 };
@@ -291,12 +292,18 @@ async function getWebinarBySlug(slug: string): Promise<{
 
   return {
     id: doc.id,
-    data: {
-      slug: String(raw.slug ?? slug),
-      title: String(raw.title ?? ""),
-      videoPublicPath: String(raw.videoPublicPath ?? ""),
-      durationSec: Number(raw.durationSec ?? 0),
-      schedule: {
+      data: {
+        slug: String(raw.slug ?? slug),
+        title: String(raw.title ?? ""),
+        videoPublicPath: String(raw.videoPublicPath ?? ""),
+        durationSec: Number(raw.durationSec ?? 0),
+        replayExpiryHours:
+          typeof raw.replayExpiryHours === "number" &&
+          Number.isFinite(raw.replayExpiryHours) &&
+          raw.replayExpiryHours > 0
+            ? Math.floor(raw.replayExpiryHours)
+            : 72,
+        schedule: {
         timezoneBase: String(scheduleRaw.timezoneBase ?? "Asia/Manila"),
         daysOfWeek,
         times,
@@ -380,6 +387,9 @@ export async function registerForWebinarAction(input: RegisterForWebinarInput) {
       userTimeZone: input.userTimeZone,
       isMobile: input.isMobile,
       scheduledStartISO,
+      scheduledEndISO,
+      liveWindowEndISO,
+      replayExpiryHours: webinar.data.replayExpiryHours,
     });
   } catch (error) {
     console.error("Registration webhook failed", {

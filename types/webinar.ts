@@ -75,6 +75,7 @@ export type Webinar = {
   videoPublicPath: string;
   durationSec: number;
   lateGraceMinutes?: number;
+  replayExpiryHours?: number;
   schedule: WebinarSchedule;
   webhook: WebinarWebhook;
   attendanceWebhook?: WebinarWebhook;

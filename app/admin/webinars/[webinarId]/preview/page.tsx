@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getWebinarAction } from "@/app/actions/webinar-actions";
 import WebinarPreviewClient from "@/components/admin/WebinarPreviewClient";
+import { requireAdminUser } from "@/lib/auth/server";
 
 type Props = {
   params: Promise<{ webinarId: string }>;
@@ -10,6 +11,7 @@ type Props = {
 export const dynamic = "force-dynamic";
 
 export default async function WebinarPreviewPage({ params }: Props) {
+  await requireAdminUser("view_admin", "/admin");
   const { webinarId } = await params;
   const webinar = await getWebinarAction(webinarId);
 

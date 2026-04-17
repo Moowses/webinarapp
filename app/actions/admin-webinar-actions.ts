@@ -2,6 +2,7 @@
 
 import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
+import { requireAdminUser } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
 import type { WebinarSchedule } from "@/types/webinar";
 
@@ -144,11 +145,13 @@ async function assertUniqueSlug(slug: string, idToIgnore: string) {
 }
 
 export async function listWebinarsForAdminAction(): Promise<AdminWebinarView[]> {
+  await requireAdminUser("view_admin", "/admin");
   const snap = await adminDb.collection("webinars").orderBy("createdAt", "desc").get();
   return snap.docs.map(mapDocToAdminView);
 }
 
 export async function upsertWebinarAction(input: AdminWebinarInput) {
+  await requireAdminUser("webinar_create", "/admin");
   const id = input.id.trim();
   if (!id) throw new Error("id is required");
   if (!input.slug.trim()) throw new Error("slug is required");
@@ -183,6 +186,7 @@ export async function upsertWebinarAction(input: AdminWebinarInput) {
 }
 
 export async function deleteWebinarAction(id: string) {
+  await requireAdminUser("webinar_edit_basic", "/admin");
   const cleanId = id.trim();
   if (!cleanId) throw new Error("id is required");
   await adminDb.collection("webinars").doc(cleanId).delete();

@@ -13,12 +13,13 @@ import type { SiteSettings } from "@/lib/site-settings";
 type Props = {
   initial: SiteSettings;
   action: (formData: FormData) => Promise<{ ok: true }>;
+  canManageUsers: boolean;
 };
 
 const inputClass =
   "mt-1 w-full rounded-xl border border-[#E6EDF3] bg-white px-3 py-2.5 text-sm text-[#1F2A37] outline-none transition placeholder:text-[#9CA3AF] focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20";
 
-export default function SiteSettingsForm({ initial, action }: Props) {
+export default function SiteSettingsForm({ initial, action, canManageUsers }: Props) {
   const formRef = useRef<HTMLFormElement | null>(null);
   const faviconInputRef = useRef<HTMLInputElement | null>(null);
   const seoImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -154,6 +155,14 @@ export default function SiteSettingsForm({ initial, action }: Props) {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              {canManageUsers ? (
+                <Link
+                  href="/admin/settings/users"
+                  className="rounded-xl border border-[#D7E2EC] bg-white px-4 py-2 text-sm font-semibold text-[#1F2A37] transition hover:bg-[#F8FBFF]"
+                >
+                  User management
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={handleSave}

@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { deleteWebinarAndAssetsAction } from "@/app/actions/webinar-actions";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("webinar_edit_basic");
+    if (!auth.ok) return auth.response;
+
     const body = (await request.json().catch(() => ({}))) as { webinarId?: string };
     const webinarId = String(body.webinarId ?? "").trim();
     if (!webinarId) {

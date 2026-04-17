@@ -24,6 +24,7 @@ type LiveMessage = {
   senderName: string;
   text: string;
   createdAtMs: number | null;
+  playbackOffsetSec: number | null;
   type: "user" | "ai" | "system" | "predefined";
 };
 
@@ -38,6 +39,9 @@ type Props = {
   title?: string;
   onRequestClose?: () => void;
   mobileOverlay?: boolean;
+  readOnly?: boolean;
+  readOnlyLabel?: string;
+  forceShowCloseButton?: boolean;
 };
 
 const PAGE_SIZE = 200;
@@ -55,6 +59,9 @@ export default function CombinedChatStream({
   title,
   onRequestClose,
   mobileOverlay = false,
+  readOnly = false,
+  readOnlyLabel = "Replay mode. Chat is read-only.",
+  forceShowCloseButton = false,
 }: Props) {
   const [name, setName] = useState(initialDisplayName?.trim() || "Guest");
   const [text, setText] = useState("");
@@ -164,6 +171,10 @@ export default function CombinedChatStream({
           senderName: String(data.senderName ?? "Guest"),
           text: String(data.text ?? ""),
           createdAtMs: createdAt,
+          playbackOffsetSec:
+            typeof data.playbackOffsetSec === "number" && Number.isFinite(data.playbackOffsetSec)
+              ? Math.max(0, Math.floor(data.playbackOffsetSec))
+              : null,
           type:
             data.type === "ai" || data.type === "system" || data.type === "predefined"
               ? data.type
@@ -190,7 +201,10 @@ export default function CombinedChatStream({
 
     const live = liveMessages
       .map((m) => {
-        const sortMs = Math.min(m.createdAtMs ?? timelineNowMs, timelineNowMs);
+        const sortMs =
+          m.playbackOffsetSec !== null
+            ? scheduledStartMs + m.playbackOffsetSec * 1000
+            : m.createdAtMs ?? timelineNowMs;
         return {
           key: `l_${m.id}`,
           senderName: m.senderName,
@@ -292,13 +306,13 @@ export default function CombinedChatStream({
             <button
               type="button"
               onClick={onRequestClose}
-              className={`rounded px-2 py-0.5 text-xs lg:hidden ${
+              className={`rounded px-2 py-0.5 text-xs ${
                 mobileOverlay
                   ? "border border-white/20 bg-white/10 text-white"
                   : "border border-slate-300 text-slate-600"
-              }`}
+              } ${forceShowCloseButton ? "" : "lg:hidden"}`}
             >
-              X
+              Hide chat
             </button>
           ) : null}
         </div>
@@ -383,32 +397,40 @@ export default function CombinedChatStream({
             : "sticky bottom-0 border-t border-slate-200 bg-white"
         }`}
       >
-        <div className={`mb-2 text-[11px] ${mobileOverlay ? "text-white/65" : "text-slate-500"}`}>
-          Send to: <span className={`font-medium ${mobileOverlay ? "text-white" : "text-slate-700"}`}>Everyone</span>
-        </div>
-        <div className="flex gap-2">
-          <input
-            className={`flex-1 rounded-xl px-3 py-2 text-sm ${
-              mobileOverlay
-                ? "border border-white/15 bg-white/10 text-white placeholder:text-white/45"
-                : "border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-            }`}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type message here..."
-            onKeyDown={(e) => {
-              if (e.key === "Enter") send();
-            }}
-          />
-          <button
-            className="rounded-xl bg-[#0e72ed] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            disabled={sending}
-            onClick={send}
-          >
-            Send
-          </button>
-        </div>
-        {sendError ? <p className="mt-2 text-xs text-red-600">{sendError}</p> : null}
+        {readOnly ? (
+          <div className={`text-xs ${mobileOverlay ? "text-white/70" : "text-slate-500"}`}>
+            {readOnlyLabel}
+          </div>
+        ) : (
+          <>
+            <div className={`mb-2 text-[11px] ${mobileOverlay ? "text-white/65" : "text-slate-500"}`}>
+              Send to: <span className={`font-medium ${mobileOverlay ? "text-white" : "text-slate-700"}`}>Everyone</span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                className={`flex-1 rounded-xl px-3 py-2 text-sm ${
+                  mobileOverlay
+                    ? "border border-white/15 bg-white/10 text-white placeholder:text-white/45"
+                    : "border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
+                }`}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Type message here..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") send();
+                }}
+              />
+              <button
+                className="rounded-xl bg-[#0e72ed] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                disabled={sending}
+                onClick={send}
+              >
+                Send
+              </button>
+            </div>
+            {sendError ? <p className="mt-2 text-xs text-red-600">{sendError}</p> : null}
+          </>
+        )}
         {loadError ? <p className="mt-2 text-xs text-red-600">{loadError}</p> : null}
       </div>
     </div>

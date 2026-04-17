@@ -200,6 +200,7 @@ export async function POST(request: Request) {
         registrationId: registrationDoc.id,
         webinarId,
         timezoneGroupKey,
+        playbackOffsetSec: Math.max(0, Math.floor((nowMs - startMs) / 1000)),
         createdAt: FieldValue.serverTimestamp(),
       });
 
@@ -284,6 +285,7 @@ export async function POST(request: Request) {
             senderName: botName,
             webinarId,
             timezoneGroupKey,
+            playbackOffsetSec: playbackSec,
             createdAt: FieldValue.serverTimestamp(),
           });
           console.log("[live-chat] bot reply stored", {

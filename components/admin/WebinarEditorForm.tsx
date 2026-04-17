@@ -16,6 +16,7 @@ type WebinarFormData = {
   videoPublicPath: string;
   durationSec: number;
   lateGraceMinutes: number;
+  replayExpiryHours: number;
   schedule: {
     timezoneBase: string;
     daysOfWeek: number[];
@@ -51,6 +52,14 @@ type Props = {
   submitLabel: string;
   action: (formData: FormData) => Promise<{ ok: true; webinarId?: string }>;
   updatedAt?: string | null;
+  permissions: {
+    basic: boolean;
+    video: boolean;
+    webhook: boolean;
+    attendanceWebhook: boolean;
+    schedule: boolean;
+    bot: boolean;
+  };
 };
 
 const weekdayOptions = [
@@ -108,6 +117,7 @@ export default function WebinarEditorForm({
   submitLabel,
   action,
   updatedAt,
+  permissions,
 }: Props) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -117,6 +127,9 @@ export default function WebinarEditorForm({
   const [videoPublicPath, setVideoPublicPath] = useState(initial.videoPublicPath);
   const [durationSec, setDurationSec] = useState(String(initial.durationSec));
   const [lateGraceMinutes, setLateGraceMinutes] = useState(String(initial.lateGraceMinutes));
+  const [replayExpiryHours, setReplayExpiryHours] = useState(String(initial.replayExpiryHours));
+  const [liveWindowMinutes, setLiveWindowMinutes] = useState(String(initial.schedule.liveWindowMinutes));
+  const [liveWindowManuallyEdited, setLiveWindowManuallyEdited] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [webhookEnabled, setWebhookEnabled] = useState(initial.webhook.enabled);
   const [webhookUrl, setWebhookUrl] = useState(initial.webhook.url);
@@ -167,6 +180,7 @@ export default function WebinarEditorForm({
   const mustUploadFirst = Boolean(selectedFile) && uploadStatus !== "Uploaded successfully";
   const uploadButtonDisabled = !selectedFile || isUploading;
   const status = initial.slug && initial.videoPublicPath ? "Active" : "Draft";
+  const canSave = Object.values(permissions).some(Boolean);
 
   const suggestedPath = useMemo(() => {
     if (!selectedFile) return null;
@@ -234,6 +248,11 @@ export default function WebinarEditorForm({
     markDirty();
   }
 
+  function syncLiveWindowToDuration(duration: number) {
+    if (liveWindowManuallyEdited || !Number.isFinite(duration) || duration <= 0) return;
+    setLiveWindowMinutes(String(Math.max(1, Math.ceil(duration / 60))));
+  }
+
   function readVideoDuration(file: File) {
     const objectUrl = URL.createObjectURL(file);
     const video = document.createElement("video");
@@ -243,6 +262,7 @@ export default function WebinarEditorForm({
       const duration = Math.ceil(video.duration);
       if (Number.isFinite(duration) && duration > 0) {
         setDurationSec(String(duration));
+        syncLiveWindowToDuration(duration);
         setDurationReadError(null);
       } else {
         setDurationReadError("Unable to read duration");
@@ -454,11 +474,12 @@ export default function WebinarEditorForm({
       <button
         type="button"
         onClick={handleSave}
-        disabled={isSaving || isUploading}
+        disabled={isSaving || isUploading || !canSave}
         className="rounded-xl bg-[#2F6FA3] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3E82BD] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isSaving ? "Saving..." : submitLabel}
       </button>
+      {permissions.basic ? (
       <a
         href={initial.webinarId ? `/admin/webinars/${initial.webinarId}/preview` : "#"}
         className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm text-[#2F6FA3] transition hover:bg-[#F0F7FF]"
@@ -471,6 +492,21 @@ export default function WebinarEditorForm({
       >
         Preview
       </a>
+      ) : null}
+      {permissions.basic ? (
+      <a
+        href={initial.webinarId ? `/admin/webinars/${initial.webinarId}/replay-preview` : "#"}
+        className="rounded-xl border border-[#F58220] bg-white px-4 py-2 text-sm text-[#F58220] transition hover:bg-[#FFF4EA]"
+        onClick={(event) => {
+          if (!initial.webinarId) {
+            event.preventDefault();
+            setErrorToast("Save the webinar first before opening replay preview.");
+          }
+        }}
+      >
+        Replay Preview
+      </a>
+      ) : null}
       <Link
         href="/admin"
         className="rounded-xl border border-[#2F6FA3] bg-white px-4 py-2 text-sm text-[#2F6FA3] transition hover:bg-[#F0F7FF]"
@@ -505,7 +541,7 @@ export default function WebinarEditorForm({
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(340px,1fr)]">
           <div className="space-y-6">
-            <AdminSection title="Basic Info" description="Core webinar metadata and public access fields." accent="bg-[#2F6FA3]">
+	            {permissions.basic ? <AdminSection title="Basic Info" description="Core webinar metadata and public access fields." accent="bg-[#2F6FA3]">
               <div className="grid gap-5 md:grid-cols-2">
                 <label className="block text-sm text-[#1F2A37]">
                   Title
@@ -542,9 +578,9 @@ export default function WebinarEditorForm({
                   />
                 </label>
               </div>
-            </AdminSection>
+	            </AdminSection> : null}
 
-            <AdminSection title="Video" description="Upload, replace, and validate the webinar video." accent="bg-[#F58220]">
+	            {permissions.video ? <AdminSection title="Video" description="Upload, replace, and validate the webinar video." accent="bg-[#F58220]">
               <div
                 className={`rounded-2xl border border-dashed p-5 transition ${
                   isDragActive ? "border-[#2F6FA3] bg-[#F0F7FF]" : "border-[#E6EDF3] bg-[#F8FBFF]"
@@ -657,9 +693,9 @@ export default function WebinarEditorForm({
                   ) : null}
                 </div>
               </div>
-            </AdminSection>
+	            </AdminSection> : null}
 
-            <AdminSection title="Webhook" description="Send registration data to GHL, Zapier, or other external workflows." accent="bg-[#2F6FA3]">
+	            {permissions.webhook ? <AdminSection title="Webhook" description="Send registration data to GHL, Zapier, or other external workflows." accent="bg-[#2F6FA3]">
               <input type="hidden" name="webhook.enabled" value="false" />
               <label className="inline-flex items-center gap-3 rounded-xl border border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm text-[#1F2A37]">
                 <input
@@ -699,9 +735,9 @@ export default function WebinarEditorForm({
                   Sends a sample registration payload so GHL or Zapier can map the fields correctly.
                 </span>
               </div>
-            </AdminSection>
+	            </AdminSection> : null}
 
-            <AdminSection
+	            {permissions.attendanceWebhook ? <AdminSection
               title="Attendance Webhook"
               description="Send attended webinar events to GHL, Zapier, or other external workflows."
               accent="bg-[#F58220]"
@@ -763,9 +799,9 @@ export default function WebinarEditorForm({
                   Sends sample attended and no-show payloads so GHL or Zapier can map attendance outcomes separately from registration.
                 </span>
               </div>
-            </AdminSection>
+	            </AdminSection> : null}
 
-            <AdminSection title="Schedule" description="Configure local-time sessions and live access windows." accent="bg-[#F58220]">
+	            {permissions.schedule ? <AdminSection title="Schedule" description="Configure local-time sessions and live access windows." accent="bg-[#F58220]">
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="text-sm text-[#1F2A37]">
                   Registrant Local Time
@@ -780,17 +816,25 @@ export default function WebinarEditorForm({
                   </p>
                 </div>
 
-                <label className="block text-sm text-[#1F2A37]">
-                  Live Window (minutes)
-                  <input
-                    name="schedule.liveWindowMinutes"
-                    type="number"
-                    min={1}
-                    required
-                    defaultValue={initial.schedule.liveWindowMinutes}
-                    className={inputClass}
-                  />
-                </label>
+	                <label className="block text-sm text-[#1F2A37]">
+	                  Live Window (minutes)
+	                  <input
+	                    name="schedule.liveWindowMinutes"
+	                    type="number"
+	                    min={1}
+	                    required
+	                    value={liveWindowMinutes}
+                      onChange={(event) => {
+                        setLiveWindowMinutes(event.target.value);
+                        setLiveWindowManuallyEdited(true);
+                        markDirty();
+                      }}
+	                    className={inputClass}
+	                  />
+                    <span className="mt-2 block text-xs text-[#6B7280]">
+                      Auto-fills from the video duration when you upload a file. You can still override it.
+                    </span>
+	                </label>
               </div>
 
               <fieldset className="mt-5">
@@ -841,11 +885,11 @@ export default function WebinarEditorForm({
                   </div>
                 )}
               </div>
-            </AdminSection>
-          </div>
+	            </AdminSection> : null}
+	          </div>
 
-          <div className="space-y-6">
-            <AdminSection title="AI Chat Bot" description="Configure automated responses during the session." accent="bg-[#2F6FA3]">
+	          <div className="space-y-6">
+	            {permissions.bot ? <AdminSection title="AI Chat Bot" description="Configure automated responses during the session." accent="bg-[#2F6FA3]">
               <input type="hidden" name="bot.enabled" value="false" />
               <label className="inline-flex items-center gap-3 rounded-xl border border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-sm text-[#1F2A37]">
                 <input
@@ -920,22 +964,29 @@ export default function WebinarEditorForm({
                   />
                 </label>
               </div>
-            </AdminSection>
+	            </AdminSection> : null}
 
-            <AdminSection title="Advanced" description="Handle duration, late joins, and post-webinar redirects." accent="bg-[#F58220]">
+	            {permissions.basic ? <AdminSection title="Advanced" description="Handle duration, late joins, and post-webinar redirects." accent="bg-[#F58220]">
               <div className="grid gap-5">
-                <label className="block text-sm text-[#1F2A37]">
-                  Duration (seconds)
-                  <input
-                    name="durationSec"
-                    type="number"
-                    min={1}
-                    required
-                    value={durationSec}
-                    onChange={(event) => setDurationSec(event.target.value)}
-                    className={inputClass}
-                  />
-                </label>
+	                <label className="block text-sm text-[#1F2A37]">
+	                  Duration (seconds)
+	                  <input
+	                    name="durationSec"
+	                    type="number"
+	                    min={1}
+	                    required
+	                    value={durationSec}
+	                    onChange={(event) => {
+                        const next = event.target.value;
+                        setDurationSec(next);
+                        const parsed = Number(next);
+                        if (Number.isFinite(parsed) && parsed > 0) {
+                          syncLiveWindowToDuration(parsed);
+                        }
+                      }}
+	                    className={inputClass}
+	                  />
+	                </label>
 
                 <label className="block text-sm text-[#1F2A37]">
                   Late Join Grace (minutes)
@@ -948,6 +999,22 @@ export default function WebinarEditorForm({
                     onChange={(event) => setLateGraceMinutes(event.target.value)}
                     className={inputClass}
                   />
+                </label>
+
+                <label className="block text-sm text-[#1F2A37]">
+                  Replay Expiry (hours)
+                  <input
+                    name="replayExpiryHours"
+                    type="number"
+                    min={1}
+                    required
+                    value={replayExpiryHours}
+                    onChange={(event) => setReplayExpiryHours(event.target.value)}
+                    className={inputClass}
+                  />
+                  <span className="mt-2 block text-xs text-[#6B7280]">
+                    Default is 72 hours. After this window, the replay link for this webinar expires.
+                  </span>
                 </label>
 
                 <input type="hidden" name="redirect.enabled" value="false" />
@@ -975,10 +1042,10 @@ export default function WebinarEditorForm({
                   />
                 </label>
               </div>
-            </AdminSection>
-          </div>
-        </div>
-      </form>
+	            </AdminSection> : null}
+	          </div>
+	        </div>
+	      </form>
 
 	      <AdminLoadingModal
 	        open={Boolean(loadingMessage)}
@@ -989,9 +1056,9 @@ export default function WebinarEditorForm({
       <AdminSuccessToast message={successToast} />
       <AdminErrorToast message={errorToast} />
       <AdminStickySaveBar
-        visible={hasUnsavedChanges}
+        visible={hasUnsavedChanges && canSave}
         saving={isSaving}
-        disabled={isUploading}
+        disabled={isUploading || !canSave}
         onCancel={handleCancel}
         onSave={handleSave}
       />

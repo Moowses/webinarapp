@@ -1,7 +1,9 @@
 "use server";
 
 import "server-only";
+import { requireAdminUser } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
+import { hashToken } from "@/lib/utils/tokens";
 import {
   getAdminLiveOverview,
   toIsoOrNull,
@@ -28,6 +30,8 @@ export type AdminRegistrantRow = {
   webinarId: string;
   webinarSlug: string;
   webinarTitle: string;
+  timezoneGroupKey: string;
+  sessionId: string | null;
   accessToken: string | null;
   createdAt: string | null;
   scheduledStartISO: string | null;
@@ -49,6 +53,14 @@ type WebinarMeta = {
 
 function norm(value: string) {
   return value.trim().toLowerCase();
+}
+
+function buildSessionId(input: {
+  webinarId: string;
+  timezoneGroupKey: string;
+  scheduledStartISO: string;
+}) {
+  return hashToken(`${input.webinarId}__${input.timezoneGroupKey}__${input.scheduledStartISO}`).slice(0, 40);
 }
 
 async function getWebinarMetaMap(webinarIds: string[]): Promise<Map<string, WebinarMeta>> {
@@ -74,6 +86,7 @@ async function getWebinarMetaMap(webinarIds: string[]): Promise<Map<string, Webi
 }
 
 export async function listRegistrantsForAdminAction(): Promise<AdminRegistrantRow[]> {
+  await requireAdminUser("view_admin", "/admin");
   const registrationsSnap = await adminDb
     .collection("registrations")
     .select(
@@ -84,6 +97,7 @@ export async function listRegistrantsForAdminAction(): Promise<AdminRegistrantRo
       "webinarId",
       "webinarSlug",
       "webinarTitle",
+      "timezoneGroupKey",
       "token",
       "createdAt",
       "scheduledStartISO",
@@ -110,6 +124,9 @@ export async function listRegistrantsForAdminAction(): Promise<AdminRegistrantRo
     const fullName = `${firstName} ${lastName}`.trim() || "(No name)";
     const webinarId = String(data.webinarId ?? "");
     const webinarMetaRow = webinarMeta.get(webinarId);
+    const timezoneGroupKey = String(data.timezoneGroupKey ?? "").trim();
+    const scheduledStartISO =
+      typeof data.scheduledStartISO === "string" ? data.scheduledStartISO : null;
 
     const attendedAtISO =
       typeof data.attendedAtISO === "string" ? data.attendedAtISO : null;
@@ -148,10 +165,14 @@ export async function listRegistrantsForAdminAction(): Promise<AdminRegistrantRo
         webinarMetaRow?.title ||
         String(data.webinarSlug ?? "") ||
         "(Unknown webinar)",
+      timezoneGroupKey,
+      sessionId:
+        webinarId && timezoneGroupKey && scheduledStartISO
+          ? buildSessionId({ webinarId, timezoneGroupKey, scheduledStartISO })
+          : null,
       accessToken: typeof data.token === "string" ? data.token : null,
       createdAt: toIsoOrNull(data.createdAt),
-      scheduledStartISO:
-        typeof data.scheduledStartISO === "string" ? data.scheduledStartISO : null,
+      scheduledStartISO,
       scheduledEndISO:
         typeof data.scheduledEndISO === "string" ? data.scheduledEndISO : null,
       liveWindowEndISO:
@@ -183,15 +204,18 @@ export async function listRegistrantsForAdminAction(): Promise<AdminRegistrantRo
 }
 
 export async function getAdminLiveOverviewAction(): Promise<AdminLiveOverview> {
+  await requireAdminUser("view_admin", "/admin");
   return getAdminLiveOverview();
 }
 
 export async function listActiveLiveSessionsForAdminAction(): Promise<ActiveLiveSessionRow[]> {
+  await requireAdminUser("view_admin", "/admin");
   const overview = await getAdminLiveOverviewAction();
   return overview.sessions;
 }
 
 export async function listActiveLiveViewersForAdminAction(): Promise<ActiveLiveViewerRow[]> {
+  await requireAdminUser("view_admin", "/admin");
   const overview = await getAdminLiveOverviewAction();
   return overview.viewers;
 }

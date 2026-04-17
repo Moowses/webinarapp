@@ -4,6 +4,7 @@ import "server-only";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { rm } from "fs/promises";
 import { join } from "path";
+import { requireAdminUser } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
 import type {
   WebinarBotConfig,
@@ -21,6 +22,7 @@ type WebinarInput = {
   videoPublicPath?: unknown;
   durationSec?: unknown;
   lateGraceMinutes?: unknown;
+  replayExpiryHours?: unknown;
   schedule?: unknown;
   webhook?: unknown;
   attendanceWebhook?: unknown;
@@ -88,6 +90,7 @@ export type WebinarView = {
   videoPublicPath: string;
   durationSec: number;
   lateGraceMinutes: number;
+  replayExpiryHours: number;
   schedule: WebinarSchedule;
   scheduleType: "weekly" | "daily";
   scheduleLocalTime: string;
@@ -116,6 +119,7 @@ export type WebinarRecord = {
   videoPublicPath: string;
   durationSec: number;
   lateGraceMinutes: number;
+  replayExpiryHours: number;
   schedule: WebinarSchedule;
   scheduleType: "weekly" | "daily";
   scheduleLocalTime: string;
@@ -133,6 +137,7 @@ export type WebinarRecord = {
 const DEFAULT_TIMEZONE_BASE = "Asia/Manila";
 const DEFAULT_LIVE_WINDOW_MINUTES = 120;
 const DEFAULT_LATE_GRACE_MINUTES = 15;
+const DEFAULT_REPLAY_EXPIRY_HOURS = 72;
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DELETE_BATCH_SIZE = 400;
 
@@ -199,6 +204,11 @@ function toOptionalPositiveInt(value: unknown): number | null {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.floor(parsed);
+}
+
+function normalizeReplayExpiryHours(input: { replayExpiryHours?: unknown }, fallback = DEFAULT_REPLAY_EXPIRY_HOURS): number {
+  const parsed = toOptionalPositiveInt(input.replayExpiryHours);
+  return parsed ?? fallback;
 }
 
 function toStringArray(value: unknown): string[] {
@@ -385,6 +395,7 @@ function parseInput(formDataOrTypedInput: FormData | WebinarInput): WebinarInput
       videoPublicPath: formDataOrTypedInput.get("videoPublicPath"),
       durationSec: formDataOrTypedInput.get("durationSec"),
       lateGraceMinutes: formDataOrTypedInput.get("lateGraceMinutes"),
+      replayExpiryHours: formDataOrTypedInput.get("replayExpiryHours"),
       webhook: {
         enabled:
           (webhookEnabledValues.length
@@ -1138,6 +1149,10 @@ function toWebinarView(docId: string, raw: FirebaseFirestore.DocumentData): Webi
       { lateGraceMinutes: raw.lateGraceMinutes },
       DEFAULT_LATE_GRACE_MINUTES
     ),
+    replayExpiryHours: normalizeReplayExpiryHours(
+      { replayExpiryHours: raw.replayExpiryHours },
+      DEFAULT_REPLAY_EXPIRY_HOURS
+    ),
     schedule,
     scheduleType: legacy.scheduleType,
     scheduleLocalTime: legacy.scheduleLocalTime,
@@ -1151,7 +1166,44 @@ function toWebinarView(docId: string, raw: FirebaseFirestore.DocumentData): Webi
 }
 
 export async function createWebinarAction(formDataOrTypedInput: FormData | WebinarInput) {
+  await requireAdminUser("webinar_create", "/admin/webinars/new");
   const input = parseInput(formDataOrTypedInput);
+  if (input.videoPublicPath !== undefined && toCleanString(input.videoPublicPath)) {
+    await requireAdminUser("webinar_edit_video", "/admin/webinars/new");
+  }
+  if (
+    input.bot !== undefined ||
+    input.botEnabled !== undefined ||
+    input.botName !== undefined ||
+    input.botLink !== undefined ||
+    input.botApiKey !== undefined ||
+    input.botConversationId !== undefined ||
+    input.botActivationDelaySec !== undefined
+  ) {
+    await requireAdminUser("webinar_edit_bot", "/admin/webinars/new");
+  }
+  if (
+    input.schedule !== undefined ||
+    input.timezoneBase !== undefined ||
+    input.daysOfWeek !== undefined ||
+    input.times !== undefined ||
+    input.liveWindowMinutes !== undefined ||
+    input.scheduleType !== undefined ||
+    input.scheduleLocalTime !== undefined ||
+    input.scheduleWeekday !== undefined
+  ) {
+    await requireAdminUser("webinar_edit_schedule", "/admin/webinars/new");
+  }
+  if (input.webhook !== undefined || input.webhookEnabled !== undefined || input.webhookUrl !== undefined) {
+    await requireAdminUser("webinar_edit_webhook", "/admin/webinars/new");
+  }
+  if (
+    input.attendanceWebhook !== undefined ||
+    input.attendanceWebhookEnabled !== undefined ||
+    input.attendanceWebhookUrl !== undefined
+  ) {
+    await requireAdminUser("webinar_edit_attendance_webhook", "/admin/webinars/new");
+  }
   assertRequiredForCreate(input);
 
   const title = toCleanString(input.title);
@@ -1162,6 +1214,7 @@ export async function createWebinarAction(formDataOrTypedInput: FormData | Webin
     throw new Error("durationSec must be a positive number");
   }
   const lateGraceMinutes = normalizeLateGraceMinutes(input);
+  const replayExpiryHours = normalizeReplayExpiryHours(input);
 
   const schedule = normalizeSchedule(input);
   const webhook = normalizeWebhook(input);
@@ -1179,6 +1232,7 @@ export async function createWebinarAction(formDataOrTypedInput: FormData | Webin
     videoPublicPath,
     durationSec,
     lateGraceMinutes,
+    replayExpiryHours,
     schedule,
     webhook,
     attendanceWebhook,
@@ -1197,6 +1251,7 @@ export async function updateWebinarAction(
   webinarId: string,
   formDataOrTypedInput: FormData | WebinarInput
 ) {
+  await requireAdminUser("view_admin", `/admin/webinars/${webinarId}`);
   const cleanWebinarId = webinarId.trim();
   if (!cleanWebinarId) throw new Error("webinarId is required");
 
@@ -1209,12 +1264,14 @@ export async function updateWebinarAction(
   const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
 
   if (input.title !== undefined) {
+    await requireAdminUser("webinar_edit_basic", `/admin/webinars/${webinarId}`);
     const title = toCleanString(input.title);
     if (!title) throw new Error("title cannot be empty");
     updates.title = title;
   }
 
   if (input.slug !== undefined) {
+    await requireAdminUser("webinar_edit_basic", `/admin/webinars/${webinarId}`);
     const slug = toCleanString(input.slug);
     if (!slug) throw new Error("slug cannot be empty");
     await assertUniqueSlug(slug, cleanWebinarId);
@@ -1222,6 +1279,7 @@ export async function updateWebinarAction(
   }
 
   if (input.videoPublicPath !== undefined) {
+    await requireAdminUser("webinar_edit_video", `/admin/webinars/${webinarId}`);
     const videoPublicPath = toCleanString(input.videoPublicPath);
     if (!videoPublicPath) throw new Error("videoPublicPath cannot be empty");
     assertPublicVideoPath(videoPublicPath);
@@ -1229,15 +1287,25 @@ export async function updateWebinarAction(
   }
 
   if (input.durationSec !== undefined) {
+    await requireAdminUser("webinar_edit_basic", `/admin/webinars/${webinarId}`);
     const durationSec = toOptionalPositiveInt(input.durationSec);
     if (durationSec === null) throw new Error("durationSec must be a positive number");
     updates.durationSec = durationSec;
   }
 
   if (input.lateGraceMinutes !== undefined) {
+    await requireAdminUser("webinar_edit_basic", `/admin/webinars/${webinarId}`);
     updates.lateGraceMinutes = normalizeLateGraceMinutes(
       input,
       Number(existingData.lateGraceMinutes ?? DEFAULT_LATE_GRACE_MINUTES)
+    );
+  }
+
+  if (input.replayExpiryHours !== undefined) {
+    await requireAdminUser("webinar_edit_basic", `/admin/webinars/${webinarId}`);
+    updates.replayExpiryHours = normalizeReplayExpiryHours(
+      input,
+      Number(existingData.replayExpiryHours ?? DEFAULT_REPLAY_EXPIRY_HOURS)
     );
   }
 
@@ -1306,35 +1374,42 @@ export async function updateWebinarAction(
     input.confirmationPagePrimaryButtonColor !== undefined;
 
   if (scheduleKeysProvided) {
+    await requireAdminUser("webinar_edit_schedule", `/admin/webinars/${webinarId}`);
     const existingSchedule = parseStoredSchedule(existingData);
     updates.schedule = normalizeSchedule(input, existingSchedule);
   }
 
   if (webhookKeysProvided) {
+    await requireAdminUser("webinar_edit_webhook", `/admin/webinars/${webinarId}`);
     const existingWebhook = parseStoredWebhook(existingData);
     updates.webhook = normalizeWebhook(input, existingWebhook);
   }
 
   if (attendanceWebhookKeysProvided) {
+    await requireAdminUser("webinar_edit_attendance_webhook", `/admin/webinars/${webinarId}`);
     const existingAttendanceWebhook = parseStoredAttendanceWebhook(existingData);
     updates.attendanceWebhook = normalizeAttendanceWebhook(input, existingAttendanceWebhook);
   }
 
   if (redirectKeysProvided) {
+    await requireAdminUser("webinar_edit_basic", `/admin/webinars/${webinarId}`);
     const existingRedirect = parseStoredRedirect(existingData);
     updates.redirect = normalizeRedirect(input, existingRedirect);
   }
 
   if (botKeysProvided) {
+    await requireAdminUser("webinar_edit_bot", `/admin/webinars/${webinarId}`);
     const existingBot = parseStoredBot(existingData);
     updates.bot = normalizeBot(input, existingBot);
   }
 
   if (registrationPageKeysProvided) {
+    await requireAdminUser("webinar_edit_registration_page", `/admin/webinars/${webinarId}`);
     const existingRegistrationPage = parseStoredRegistrationPage(existingData);
     updates.registrationPage = normalizeRegistrationPage(input, existingRegistrationPage);
   }
   if (confirmationPageKeysProvided) {
+    await requireAdminUser("webinar_edit_confirmation_page", `/admin/webinars/${webinarId}`);
     const existingConfirmationPage = parseStoredConfirmationPage(existingData);
     updates.confirmationPage = normalizeConfirmationPage(input, existingConfirmationPage);
   }
@@ -1348,6 +1423,7 @@ export async function updateWebinarAction(
 }
 
 export async function listWebinarsAction(): Promise<WebinarListItem[]> {
+  await requireAdminUser("view_admin", "/admin");
   const snap = await adminDb
     .collection("webinars")
     .select("title", "slug", "updatedAt", "schedule", "durationSec", "scheduleType", "scheduleLocalTime", "scheduleWeekday")
@@ -1368,6 +1444,7 @@ export async function listWebinarsAction(): Promise<WebinarListItem[]> {
 }
 
 export async function getWebinarAction(webinarId: string): Promise<WebinarRecord | null> {
+  await requireAdminUser("view_admin", `/admin/webinars/${webinarId}`);
   const cleanWebinarId = webinarId.trim();
   if (!cleanWebinarId) throw new Error("webinarId is required");
 
@@ -1393,6 +1470,10 @@ export async function getWebinarAction(webinarId: string): Promise<WebinarRecord
     lateGraceMinutes: normalizeLateGraceMinutes(
       { lateGraceMinutes: raw.lateGraceMinutes },
       DEFAULT_LATE_GRACE_MINUTES
+    ),
+    replayExpiryHours: normalizeReplayExpiryHours(
+      { replayExpiryHours: raw.replayExpiryHours },
+      DEFAULT_REPLAY_EXPIRY_HOURS
     ),
     schedule,
     scheduleType: legacy.scheduleType,
@@ -1424,6 +1505,7 @@ export async function getWebinarBySlugAction(slug: string): Promise<WebinarView 
 }
 
 export async function deleteWebinarAndAssetsAction(webinarId: string) {
+  await requireAdminUser("webinar_edit_basic", "/admin");
   const cleanWebinarId = webinarId.trim();
   if (!cleanWebinarId) throw new Error("webinarId is required");
 

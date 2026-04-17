@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
 import { buildLiveSessionId } from "@/lib/utils/live-session";
 
@@ -11,6 +12,9 @@ function cleanText(value: unknown, maxLength: number): string {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("view_admin");
+    if (!auth.ok) return auth.response;
+
     const body = (await request.json()) as { registrationId?: unknown };
     const registrationId = cleanText(body.registrationId, 120);
 

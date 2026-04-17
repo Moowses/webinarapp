@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
 
 export const runtime = "nodejs";
@@ -202,6 +203,9 @@ function parseTranscriptTxt(text: string): { rows: ParsedRow[]; skipped: number 
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("webinar_edit_predefined_chat");
+    if (!auth.ok) return auth.response;
+
     const formData = await request.formData();
     const webinarId = String(formData.get("webinarId") ?? "").trim();
     const file = formData.get("file");

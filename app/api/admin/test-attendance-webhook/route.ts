@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 import {
   buildAttendanceWebhookPayload,
   buildNoShowWebhookPayload,
@@ -14,6 +15,9 @@ function clean(value: unknown) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("webinar_edit_attendance_webhook");
+    if (!auth.ok) return auth.response;
+
     const body = (await request.json().catch(() => ({}))) as {
       url?: unknown;
       confirmationBaseUrl?: unknown;

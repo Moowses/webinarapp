@@ -40,6 +40,24 @@ function formatClock(iso: string) {
   }).format(new Date(iso));
 }
 
+async function sendAdminSessionMessage(input: {
+  webinarId: string;
+  sessionId: string;
+  timezoneGroupKey: string;
+  senderName: string;
+  text: string;
+}) {
+  const response = await fetch("/api/admin/live-chat/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error || "Failed to send message");
+  }
+}
+
 export default function AdminLiveMonitor({ sessions, viewers }: Props) {
   const [liveSessions, setLiveSessions] = useState(sessions);
   const [liveViewers, setLiveViewers] = useState(viewers);
@@ -127,33 +145,44 @@ export default function AdminLiveMonitor({ sessions, viewers }: Props) {
           {liveSessions.map((session) => {
             const active = session.sessionId === selectedSession.sessionId;
             return (
-              <button
+              <div
                 key={session.sessionId}
-                type="button"
-                onClick={() => {
-                  setSelectedSessionId(session.sessionId);
-                  setIsModalOpen(true);
-                }}
-                className={`w-full rounded-2xl border p-4 text-left transition ${
+                className={`rounded-2xl border p-4 transition ${
                   active
                     ? "border-[#B9D7EF] bg-[#E8F5FF]"
                     : "border-[#E6EDF3] bg-[#F8FBFF] hover:border-[#B9D7EF] hover:bg-white"
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-[#1F2A37]">{session.webinarTitle}</div>
-                    <div className="mt-1 text-xs text-[#6B7280]">{session.timezoneGroupKey}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSessionId(session.sessionId);
+                    setIsModalOpen(true);
+                  }}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-[#1F2A37]">{session.webinarTitle}</div>
+                      <div className="mt-1 text-xs text-[#6B7280]">{session.timezoneGroupKey}</div>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-[#2F6FA3] shadow-sm">
+                      {session.attendeeCount} viewers
+                    </span>
                   </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-[#2F6FA3] shadow-sm">
-                    {session.attendeeCount} viewers
-                  </span>
-                </div>
-                <div className="mt-3 text-xs text-[#6B7280]">
-                  Start {formatClock(session.scheduledStartISO)}
-                </div>
-                <div className="mt-2 text-xs font-medium text-[#2F6FA3]">Click here to monitor</div>
-              </button>
+                  <div className="mt-3 text-xs text-[#6B7280]">
+                    Start {formatClock(session.scheduledStartISO)}
+                  </div>
+                  <div className="mt-2 text-xs font-medium text-[#2F6FA3]">Click here to monitor</div>
+                </button>
+                <SessionQuickReply
+                  session={session}
+                  onOpenMonitor={() => {
+                    setSelectedSessionId(session.sessionId);
+                    setIsModalOpen(true);
+                  }}
+                />
+              </div>
             );
           })}
       </div>
@@ -166,6 +195,98 @@ export default function AdminLiveMonitor({ sessions, viewers }: Props) {
         />
       ) : null}
     </section>
+  );
+}
+
+function SessionQuickReply({
+  session,
+  onOpenMonitor,
+}: {
+  session: ActiveLiveSessionRow;
+  onOpenMonitor: () => void;
+}) {
+  const [name, setName] = useState("Host");
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  async function sendReply() {
+    const senderName = name.trim();
+    const message = text.trim();
+
+    if (!senderName) {
+      setStatus("Sender name is required.");
+      return;
+    }
+    if (!message) {
+      setStatus("Reply text is required.");
+      return;
+    }
+
+    setSending(true);
+    setStatus(null);
+    try {
+      await sendAdminSessionMessage({
+        webinarId: session.webinarId,
+        sessionId: session.sessionId,
+        timezoneGroupKey: session.timezoneGroupKey,
+        senderName,
+        text: message,
+      });
+      setText("");
+      setStatus("Reply sent to this session.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to send reply");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-[#D8E7F4] bg-white/80 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2F6FA3]">
+          Session Reply
+        </div>
+        <button
+          type="button"
+          onClick={onOpenMonitor}
+          className="text-xs font-medium text-[#2F6FA3] hover:text-[#24577f]"
+        >
+          Open monitor
+        </button>
+      </div>
+      <div className="mt-3 grid gap-2">
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Host"
+          className="rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
+        />
+        <div className="flex gap-2">
+          <input
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="Reply to this live session..."
+            className="flex-1 rounded-xl border border-[#E6EDF3] bg-white px-3 py-2 text-sm text-[#1F2A37] outline-none focus:border-[#2F6FA3] focus:ring-2 focus:ring-[#2F6FA3]/20"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                void sendReply();
+              }
+            }}
+          />
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void sendReply()}
+            className="rounded-xl bg-[#2F6FA3] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#3E82BD] disabled:opacity-50"
+          >
+            {sending ? "Sending..." : "Reply"}
+          </button>
+        </div>
+      </div>
+      {status ? <p className="mt-2 text-xs text-[#6B7280]">{status}</p> : null}
+    </div>
   );
 }
 
@@ -192,7 +313,7 @@ function MonitorModal({
   return (
     <div className="fixed inset-0 z-50 bg-[#1F2A37]/30 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="mx-auto flex h-[calc(100vh-2rem)] max-w-7xl flex-col overflow-hidden rounded-3xl border border-[#E6EDF3] bg-white shadow-2xl"
+        className="mx-auto flex h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] max-w-7xl flex-col overflow-hidden rounded-3xl border border-[#E6EDF3] bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 border-b border-[#E6EDF3] px-5 py-4">
@@ -210,7 +331,7 @@ function MonitorModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-5">
           <MonitorStage session={session} viewers={viewers} />
         </div>
       </div>
@@ -286,7 +407,7 @@ function MonitorStage({
   }, []);
 
   return (
-    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+    <div className="grid min-h-0 gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#E6EDF3] bg-white">
         <div className="flex items-center gap-2 border-b border-[#E6EDF3] bg-[#F8FBFF] px-4 py-3 text-xs text-[#6B7280]">
           <span className="rounded-full bg-[#F58220] px-2 py-0.5 font-semibold uppercase tracking-[0.18em] text-white">
@@ -424,7 +545,7 @@ function MonitorStage({
         </div>
       </div>
 
-      <div className="grid h-full min-h-0 gap-4 xl:grid-rows-[280px_minmax(0,1fr)]">
+      <div className="grid min-h-0 gap-4 lg:h-full lg:grid-rows-[240px_minmax(0,1fr)] xl:grid-rows-[280px_minmax(0,1fr)]">
         <AdminViewerList viewers={viewers} />
         <AdminSessionChat session={session} />
       </div>
@@ -555,21 +676,13 @@ function AdminSessionChat({ session }: { session: ActiveLiveSessionRow }) {
     setSending(true);
     setSendError(null);
     try {
-      const response = await fetch("/api/admin/live-chat/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await sendAdminSessionMessage({
           webinarId: session.webinarId,
           sessionId: session.sessionId,
           timezoneGroupKey: session.timezoneGroupKey,
           senderName: cleanName,
           text: cleanText,
-        }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) {
-        throw new Error(payload.error || "Failed to send message");
-      }
       setText("");
     } catch (error) {
       setSendError(error instanceof Error ? error.message : "Failed to send message");

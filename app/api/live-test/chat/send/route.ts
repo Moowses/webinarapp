@@ -129,6 +129,7 @@ export async function POST(request: Request) {
       senderName,
       webinarId,
       timezoneGroupKey: "live-test",
+      playbackOffsetSec: playbackSec,
       createdAt: FieldValue.serverTimestamp(),
     });
 
@@ -204,6 +205,7 @@ export async function POST(request: Request) {
           senderName: botName,
           webinarId,
           timezoneGroupKey: "live-test",
+          playbackOffsetSec: playbackSec,
           createdAt: FieldValue.serverTimestamp(),
         });
         console.log("[live-test-chat] bot reply stored", {

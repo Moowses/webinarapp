@@ -4,10 +4,12 @@ import {
   listRegistrantsForAdminAction,
 } from "@/app/actions/admin-registration-actions";
 import AdminDashboardClient from "@/components/admin/AdminDashboardClient";
+import { requireAdminUser } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  const sessionUser = await requireAdminUser("view_admin", "/admin");
   const [webinars, registrants, liveOverview] = await Promise.all([
     listWebinarsAction(),
     listRegistrantsForAdminAction(),
@@ -22,6 +24,12 @@ export default async function AdminPage() {
           registrants={registrants}
           activeSessions={liveOverview.sessions}
           activeViewers={liveOverview.viewers}
+          currentUser={{
+            displayName: sessionUser.displayName,
+            email: sessionUser.email,
+            canManageSettings: sessionUser.effectivePermissions.includes("manage_settings"),
+            canManageUsers: sessionUser.effectivePermissions.includes("manage_users"),
+          }}
         />
       </div>
     </main>

@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
 
 export const runtime = "nodejs";
@@ -14,6 +15,9 @@ function cleanText(value: unknown, maxLength: number): string {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("view_admin");
+    if (!auth.ok) return auth.response;
+
     const body = (await request.json()) as {
       webinarId?: unknown;
       sessionId?: unknown;
@@ -58,12 +62,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "session validation failed" }, { status: 403 });
     }
 
+    const scheduledStartISO = cleanText(session.scheduledStartISO, 64);
+    const scheduledStartMs = Date.parse(scheduledStartISO);
+    const playbackOffsetSec =
+      Number.isFinite(scheduledStartMs) && scheduledStartMs > 0
+        ? Math.max(0, Math.floor((Date.now() - scheduledStartMs) / 1000))
+        : 0;
+
     await sessionRef.collection("messages").add({
       type: "user",
       text,
       senderName,
       webinarId,
       timezoneGroupKey,
+      playbackOffsetSec,
       createdAt: FieldValue.serverTimestamp(),
     });
 

@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import WebinarEditorForm from "@/components/admin/WebinarEditorForm";
 import { createWebinarAction } from "@/app/actions/webinar-actions";
+import { requireAdminUser } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ const defaultWebinar = {
   videoPublicPath: "",
   durationSec: 3600,
   lateGraceMinutes: 15,
+  replayExpiryHours: 72,
   schedule: {
     timezoneBase: "Asia/Manila",
     daysOfWeek: [3],
@@ -58,6 +60,8 @@ const defaultWebinar = {
 };
 
 export default async function NewWebinarPage() {
+  const sessionUser = await requireAdminUser("webinar_create", "/admin/webinars/new");
+
   async function createAction(formData: FormData) {
     "use server";
     const created = await createWebinarAction(formData);
@@ -77,6 +81,14 @@ export default async function NewWebinarPage() {
           initial={defaultWebinar}
           submitLabel="Create webinar"
           action={createAction}
+          permissions={{
+            basic: sessionUser.effectivePermissions.includes("webinar_create") || sessionUser.effectivePermissions.includes("webinar_edit_basic"),
+            video: sessionUser.effectivePermissions.includes("webinar_edit_video"),
+            webhook: sessionUser.effectivePermissions.includes("webinar_edit_webhook"),
+            attendanceWebhook: sessionUser.effectivePermissions.includes("webinar_edit_attendance_webhook"),
+            schedule: sessionUser.effectivePermissions.includes("webinar_edit_schedule"),
+            bot: sessionUser.effectivePermissions.includes("webinar_edit_bot"),
+          }}
         />
       </div>
     </main>

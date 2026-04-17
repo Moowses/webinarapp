@@ -1,6 +1,7 @@
 import { access, rm } from "fs/promises";
 import { join, normalize } from "path";
 import { NextResponse } from "next/server";
+import { requireAdminRequestPermission } from "@/lib/auth/server";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,9 @@ function resolveVideoPath(publicPath: string) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAdminRequestPermission("webinar_edit_video");
+    if (!auth.ok) return auth.response;
+
     const body = (await request.json().catch(() => ({}))) as { publicPath?: string };
     const publicPath = String(body.publicPath ?? "").trim();
     if (!publicPath) {

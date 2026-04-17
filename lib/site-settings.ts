@@ -1,4 +1,5 @@
 import "server-only";
+import { requireAdminUser } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
 
 export type SiteSettings = {
@@ -61,6 +62,7 @@ export async function updateSiteSettings(input: {
   seoKeywords?: unknown;
   seoImageUrl?: unknown;
 }) {
+  await requireAdminUser("manage_settings", "/admin/settings");
   const siteTitle = toCleanString(input.siteTitle) || DEFAULT_SITE_SETTINGS.siteTitle;
   const siteDescription =
     toCleanString(input.siteDescription) || DEFAULT_SITE_SETTINGS.siteDescription;
