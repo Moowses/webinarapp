@@ -15,6 +15,7 @@ import type { WebinarSchedule } from "@/types/webinar";
 import type { WebinarWebhook } from "@/types/webinar";
 import { postRegistrationWebhook } from "@/lib/services/webhook";
 import { sendAttendanceWebhookIfNeeded } from "@/lib/services/attendance-webhook";
+import { logSystemEvent } from "@/lib/system-log";
 
 export type RegisterForWebinarInput = {
   slug: string;
@@ -326,81 +327,102 @@ async function getWebinarBySlug(slug: string): Promise<{
 }
 
 export async function registerForWebinarAction(input: RegisterForWebinarInput) {
-  const webinar = await getWebinarBySlug(input.slug);
-  if (!webinar) {
-    throw new Error("Webinar not found");
-  }
-
-  if (!isValidTimeZone(input.userTimeZone)) {
-    throw new Error("Invalid user time zone");
-  }
-
-  const timezoneGroupKey = input.userTimeZone;
-  const { scheduledStartISO, scheduledEndISO, liveWindowEndISO } = computeNextScheduledOccurrence(
-    {
-      now: new Date(),
-      userTimeZone: input.userTimeZone,
-      daysOfWeek: webinar.data.schedule.daysOfWeek,
-      times: webinar.data.schedule.times,
-      dayTimes: webinar.data.schedule.dayTimes,
-      durationSec: webinar.data.durationSec,
-      liveWindowMinutes: webinar.data.schedule.liveWindowMinutes,
-    }
-  );
-
-  const token = generateToken();
-  const tokenHash = hashToken(token);
-
-  await adminDb.collection("registrations").add({
-    webinarId: webinar.id,
-    webinarSlug: webinar.data.slug,
-    webinarTitle: webinar.data.title,
-    firstName: input.firstName.trim(),
-    lastName: input.lastName.trim(),
-    email: input.email.trim().toLowerCase(),
-    phone: input.phone.trim(),
-    userTimeZone: input.userTimeZone,
-    timezoneGroupKey,
-    scheduledStartISO,
-    scheduledEndISO,
-    liveWindowEndISO,
-    scheduleTimezoneBase: input.userTimeZone,
-    scheduleDaysOfWeek: webinar.data.schedule.daysOfWeek,
-    scheduleTimes: webinar.data.schedule.times,
-    scheduleLiveWindowMinutes: webinar.data.schedule.liveWindowMinutes,
-    status: "Registered",
-    attendedLive: false,
-    token,
-    tokenHash,
-    isMobile: input.isMobile,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
   try {
-    await postRegistrationWebhook({
-      webhook: webinar.data.webhook,
-      token,
+    const webinar = await getWebinarBySlug(input.slug);
+    if (!webinar) {
+      throw new Error("Webinar not found");
+    }
+
+    if (!isValidTimeZone(input.userTimeZone)) {
+      throw new Error("Invalid user time zone");
+    }
+
+    const timezoneGroupKey = input.userTimeZone;
+    const { scheduledStartISO, scheduledEndISO, liveWindowEndISO } = computeNextScheduledOccurrence(
+      {
+        now: new Date(),
+        userTimeZone: input.userTimeZone,
+        daysOfWeek: webinar.data.schedule.daysOfWeek,
+        times: webinar.data.schedule.times,
+        dayTimes: webinar.data.schedule.dayTimes,
+        durationSec: webinar.data.durationSec,
+        liveWindowMinutes: webinar.data.schedule.liveWindowMinutes,
+      }
+    );
+
+    const token = generateToken();
+    const tokenHash = hashToken(token);
+
+    await adminDb.collection("registrations").add({
+      webinarId: webinar.id,
+      webinarSlug: webinar.data.slug,
+      webinarTitle: webinar.data.title,
       firstName: input.firstName.trim(),
       lastName: input.lastName.trim(),
       email: input.email.trim().toLowerCase(),
       phone: input.phone.trim(),
       userTimeZone: input.userTimeZone,
-      isMobile: input.isMobile,
+      timezoneGroupKey,
       scheduledStartISO,
       scheduledEndISO,
       liveWindowEndISO,
-      replayExpiryHours: webinar.data.replayExpiryHours,
+      scheduleTimezoneBase: input.userTimeZone,
+      scheduleDaysOfWeek: webinar.data.schedule.daysOfWeek,
+      scheduleTimes: webinar.data.schedule.times,
+      scheduleLiveWindowMinutes: webinar.data.schedule.liveWindowMinutes,
+      status: "Registered",
+      attendedLive: false,
+      token,
+      tokenHash,
+      isMobile: input.isMobile,
+      createdAt: FieldValue.serverTimestamp(),
     });
-  } catch (error) {
-    console.error("Registration webhook failed", {
-      webinarSlug: webinar.data.slug,
-      webhookEnabled: webinar.data.webhook.enabled,
-      webhookUrl: webinar.data.webhook.url,
-      error,
-    });
-  }
 
-  return { token, webinarSlug: webinar.data.slug };
+    try {
+      await postRegistrationWebhook({
+        webhook: webinar.data.webhook,
+        token,
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        email: input.email.trim().toLowerCase(),
+        phone: input.phone.trim(),
+        userTimeZone: input.userTimeZone,
+        isMobile: input.isMobile,
+        scheduledStartISO,
+        scheduledEndISO,
+        liveWindowEndISO,
+        replayExpiryHours: webinar.data.replayExpiryHours,
+      });
+    } catch (error) {
+      console.error("Registration webhook failed", {
+        webinarSlug: webinar.data.slug,
+        webhookEnabled: webinar.data.webhook.enabled,
+        webhookUrl: webinar.data.webhook.url,
+        error,
+      });
+    }
+
+    await logSystemEvent({
+      level: "info",
+      action: "registration_created",
+      summary: `Registration created for ${input.email.trim().toLowerCase()}.`,
+      targetType: "webinar_registration",
+      targetId: webinar.data.slug,
+      details: scheduledStartISO,
+    });
+
+    return { token, webinarSlug: webinar.data.slug };
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "registration_failed",
+      summary: `Registration failed for ${input.email.trim().toLowerCase() || "unknown email"}.`,
+      targetType: "webinar_registration",
+      targetId: input.slug,
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw error;
+  }
 }
 
 export async function getRegistrationByTokenAction(

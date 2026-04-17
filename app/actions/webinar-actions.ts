@@ -6,6 +6,7 @@ import { rm } from "fs/promises";
 import { join } from "path";
 import { requireAdminUser } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
+import { logSystemEvent } from "@/lib/system-log";
 import type {
   WebinarBotConfig,
   WebinarConfirmationPageConfig,
@@ -1166,102 +1167,128 @@ function toWebinarView(docId: string, raw: FirebaseFirestore.DocumentData): Webi
 }
 
 export async function createWebinarAction(formDataOrTypedInput: FormData | WebinarInput) {
-  await requireAdminUser("webinar_create", "/admin/webinars/new");
-  const input = parseInput(formDataOrTypedInput);
-  if (input.videoPublicPath !== undefined && toCleanString(input.videoPublicPath)) {
-    await requireAdminUser("webinar_edit_video", "/admin/webinars/new");
-  }
-  if (
-    input.bot !== undefined ||
-    input.botEnabled !== undefined ||
-    input.botName !== undefined ||
-    input.botLink !== undefined ||
-    input.botApiKey !== undefined ||
-    input.botConversationId !== undefined ||
-    input.botActivationDelaySec !== undefined
-  ) {
-    await requireAdminUser("webinar_edit_bot", "/admin/webinars/new");
-  }
-  if (
-    input.schedule !== undefined ||
-    input.timezoneBase !== undefined ||
-    input.daysOfWeek !== undefined ||
-    input.times !== undefined ||
-    input.liveWindowMinutes !== undefined ||
-    input.scheduleType !== undefined ||
-    input.scheduleLocalTime !== undefined ||
-    input.scheduleWeekday !== undefined
-  ) {
-    await requireAdminUser("webinar_edit_schedule", "/admin/webinars/new");
-  }
-  if (input.webhook !== undefined || input.webhookEnabled !== undefined || input.webhookUrl !== undefined) {
-    await requireAdminUser("webinar_edit_webhook", "/admin/webinars/new");
-  }
-  if (
-    input.attendanceWebhook !== undefined ||
-    input.attendanceWebhookEnabled !== undefined ||
-    input.attendanceWebhookUrl !== undefined
-  ) {
-    await requireAdminUser("webinar_edit_attendance_webhook", "/admin/webinars/new");
-  }
-  assertRequiredForCreate(input);
+  const actor = await requireAdminUser("webinar_create", "/admin/webinars/new");
+  try {
+    const input = parseInput(formDataOrTypedInput);
+    if (input.videoPublicPath !== undefined && toCleanString(input.videoPublicPath)) {
+      await requireAdminUser("webinar_edit_video", "/admin/webinars/new");
+    }
+    if (
+      input.bot !== undefined ||
+      input.botEnabled !== undefined ||
+      input.botName !== undefined ||
+      input.botLink !== undefined ||
+      input.botApiKey !== undefined ||
+      input.botConversationId !== undefined ||
+      input.botActivationDelaySec !== undefined
+    ) {
+      await requireAdminUser("webinar_edit_bot", "/admin/webinars/new");
+    }
+    if (
+      input.schedule !== undefined ||
+      input.timezoneBase !== undefined ||
+      input.daysOfWeek !== undefined ||
+      input.times !== undefined ||
+      input.liveWindowMinutes !== undefined ||
+      input.scheduleType !== undefined ||
+      input.scheduleLocalTime !== undefined ||
+      input.scheduleWeekday !== undefined
+    ) {
+      await requireAdminUser("webinar_edit_schedule", "/admin/webinars/new");
+    }
+    if (input.webhook !== undefined || input.webhookEnabled !== undefined || input.webhookUrl !== undefined) {
+      await requireAdminUser("webinar_edit_webhook", "/admin/webinars/new");
+    }
+    if (
+      input.attendanceWebhook !== undefined ||
+      input.attendanceWebhookEnabled !== undefined ||
+      input.attendanceWebhookUrl !== undefined
+    ) {
+      await requireAdminUser("webinar_edit_attendance_webhook", "/admin/webinars/new");
+    }
+    assertRequiredForCreate(input);
 
-  const title = toCleanString(input.title);
-  const slug = toCleanString(input.slug);
-  const videoPublicPath = toCleanString(input.videoPublicPath);
-  const durationSec = toOptionalPositiveInt(input.durationSec);
-  if (durationSec === null) {
-    throw new Error("durationSec must be a positive number");
+    const title = toCleanString(input.title);
+    const slug = toCleanString(input.slug);
+    const videoPublicPath = toCleanString(input.videoPublicPath);
+    const durationSec = toOptionalPositiveInt(input.durationSec);
+    if (durationSec === null) {
+      throw new Error("durationSec must be a positive number");
+    }
+    const lateGraceMinutes = normalizeLateGraceMinutes(input);
+    const replayExpiryHours = normalizeReplayExpiryHours(input);
+
+    const schedule = normalizeSchedule(input);
+    const webhook = normalizeWebhook(input);
+    const attendanceWebhook = normalizeAttendanceWebhook(input);
+    const redirect = normalizeRedirect(input);
+    const bot = normalizeBot(input);
+    const registrationPage = normalizeRegistrationPage(input);
+    const confirmationPage = normalizeConfirmationPage(input);
+    await assertUniqueSlug(slug);
+
+    const ref = adminDb.collection("webinars").doc();
+    await ref.set({
+      title,
+      slug,
+      videoPublicPath,
+      durationSec,
+      lateGraceMinutes,
+      replayExpiryHours,
+      schedule,
+      webhook,
+      attendanceWebhook,
+      redirect,
+      bot,
+      registrationPage,
+      confirmationPage,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await logSystemEvent({
+      level: "info",
+      action: "webinar_created",
+      summary: `Webinar "${title}" was created.`,
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "webinar",
+      targetId: ref.id,
+      details: slug,
+    });
+
+    return { webinarId: ref.id };
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "webinar_create_failed",
+      summary: "Webinar creation failed.",
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "webinar",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw error;
   }
-  const lateGraceMinutes = normalizeLateGraceMinutes(input);
-  const replayExpiryHours = normalizeReplayExpiryHours(input);
-
-  const schedule = normalizeSchedule(input);
-  const webhook = normalizeWebhook(input);
-  const attendanceWebhook = normalizeAttendanceWebhook(input);
-  const redirect = normalizeRedirect(input);
-  const bot = normalizeBot(input);
-  const registrationPage = normalizeRegistrationPage(input);
-  const confirmationPage = normalizeConfirmationPage(input);
-  await assertUniqueSlug(slug);
-
-  const ref = adminDb.collection("webinars").doc();
-  await ref.set({
-    title,
-    slug,
-    videoPublicPath,
-    durationSec,
-    lateGraceMinutes,
-    replayExpiryHours,
-    schedule,
-    webhook,
-    attendanceWebhook,
-    redirect,
-    bot,
-    registrationPage,
-    confirmationPage,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-
-  return { webinarId: ref.id };
 }
 
 export async function updateWebinarAction(
   webinarId: string,
   formDataOrTypedInput: FormData | WebinarInput
 ) {
-  await requireAdminUser("view_admin", `/admin/webinars/${webinarId}`);
+  const actor = await requireAdminUser("view_admin", `/admin/webinars/${webinarId}`);
   const cleanWebinarId = webinarId.trim();
   if (!cleanWebinarId) throw new Error("webinarId is required");
+  try {
+    const ref = adminDb.collection("webinars").doc(cleanWebinarId);
+    const existing = await ref.get();
+    if (!existing.exists) throw new Error("Webinar not found");
 
-  const ref = adminDb.collection("webinars").doc(cleanWebinarId);
-  const existing = await ref.get();
-  if (!existing.exists) throw new Error("Webinar not found");
-
-  const input = parseInput(formDataOrTypedInput);
-  const existingData = existing.data() ?? {};
-  const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+    const input = parseInput(formDataOrTypedInput);
+    const existingData = existing.data() ?? {};
+    const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
 
   if (input.title !== undefined) {
     await requireAdminUser("webinar_edit_basic", `/admin/webinars/${webinarId}`);
@@ -1418,8 +1445,32 @@ export async function updateWebinarAction(
     throw new Error("No fields to update");
   }
 
-  await ref.update(updates);
-  return { webinarId: cleanWebinarId };
+    await ref.update(updates);
+    await logSystemEvent({
+      level: "info",
+      action: "webinar_updated",
+      summary: `Webinar "${String(existingData.title ?? cleanWebinarId)}" was updated.`,
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "webinar",
+      targetId: cleanWebinarId,
+    });
+    return { webinarId: cleanWebinarId };
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "webinar_update_failed",
+      summary: "Webinar update failed.",
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "webinar",
+      targetId: cleanWebinarId,
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw error;
+  }
 }
 
 export async function listWebinarsAction(): Promise<WebinarListItem[]> {
@@ -1505,54 +1556,79 @@ export async function getWebinarBySlugAction(slug: string): Promise<WebinarView 
 }
 
 export async function deleteWebinarAndAssetsAction(webinarId: string) {
-  await requireAdminUser("webinar_edit_basic", "/admin");
+  const actor = await requireAdminUser("webinar_edit_basic", "/admin");
   const cleanWebinarId = webinarId.trim();
   if (!cleanWebinarId) throw new Error("webinarId is required");
+  try {
+    const webinarRef = adminDb.collection("webinars").doc(cleanWebinarId);
+    const webinarSnap = await webinarRef.get();
+    if (!webinarSnap.exists) {
+      throw new Error("Webinar not found");
+    }
 
-  const webinarRef = adminDb.collection("webinars").doc(cleanWebinarId);
-  const webinarSnap = await webinarRef.get();
-  if (!webinarSnap.exists) {
-    throw new Error("Webinar not found");
+    const webinar = webinarSnap.data() ?? {};
+    const slug = String(webinar.slug ?? "").trim();
+    const folderCandidates = [...new Set([cleanWebinarId, slug].map(sanitizeFolderSegment).filter(Boolean))];
+
+    const [predefinedDeleted, registrationsDeleted, sessionsDeleted, liveSessionsDeleted] =
+      await Promise.all([
+        deleteChildCollection(webinarRef, "predefinedMessages"),
+        deleteDocsInBatches(
+          adminDb.collection("registrations").where("webinarId", "==", cleanWebinarId)
+        ),
+        deleteSessionsForWebinar({
+          webinarId: cleanWebinarId,
+          collectionName: "sessions",
+          childCollections: ["messages"],
+        }),
+        deleteSessionsForWebinar({
+          webinarId: cleanWebinarId,
+          collectionName: "liveSessions",
+          childCollections: ["viewers"],
+        }),
+      ]);
+
+    await webinarRef.delete();
+
+    await Promise.all(
+      folderCandidates.map((folder) =>
+        rm(join(process.cwd(), "public", "uploads", "webinars", folder), {
+          recursive: true,
+          force: true,
+        })
+      )
+    );
+
+    await logSystemEvent({
+      level: "warn",
+      action: "webinar_deleted",
+      summary: `Webinar "${String(webinar.title ?? cleanWebinarId)}" was deleted.`,
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "webinar",
+      targetId: cleanWebinarId,
+    });
+
+    return {
+      webinarId: cleanWebinarId,
+      predefinedDeleted,
+      registrationsDeleted,
+      sessionsDeleted,
+      liveSessionsDeleted,
+    };
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "webinar_delete_failed",
+      summary: "Webinar delete failed.",
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "webinar",
+      targetId: cleanWebinarId,
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw error;
   }
-
-  const webinar = webinarSnap.data() ?? {};
-  const slug = String(webinar.slug ?? "").trim();
-  const folderCandidates = [...new Set([cleanWebinarId, slug].map(sanitizeFolderSegment).filter(Boolean))];
-
-  const [predefinedDeleted, registrationsDeleted, sessionsDeleted, liveSessionsDeleted] =
-    await Promise.all([
-      deleteChildCollection(webinarRef, "predefinedMessages"),
-      deleteDocsInBatches(
-        adminDb.collection("registrations").where("webinarId", "==", cleanWebinarId)
-      ),
-      deleteSessionsForWebinar({
-        webinarId: cleanWebinarId,
-        collectionName: "sessions",
-        childCollections: ["messages"],
-      }),
-      deleteSessionsForWebinar({
-        webinarId: cleanWebinarId,
-        collectionName: "liveSessions",
-        childCollections: ["viewers"],
-      }),
-    ]);
-
-  await webinarRef.delete();
-
-  await Promise.all(
-    folderCandidates.map((folder) =>
-      rm(join(process.cwd(), "public", "uploads", "webinars", folder), {
-        recursive: true,
-        force: true,
-      })
-    )
-  );
-
-  return {
-    webinarId: cleanWebinarId,
-    predefinedDeleted,
-    registrationsDeleted,
-    sessionsDeleted,
-    liveSessionsDeleted,
-  };
 }

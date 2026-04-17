@@ -8,6 +8,7 @@ import type { DecodedIdToken, UserRecord } from "firebase-admin/auth";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/services/firebase-admin";
 import {
+  USER_PERMISSIONS,
   getEffectivePermissions,
   hasPermission,
   isUserRole,
@@ -26,6 +27,7 @@ export type AppUserRecord = {
   photoURL: string;
   providers: string[];
   role: UserRole;
+  isBreakglass: boolean;
   customPermissions: UserPermission[];
   excludedPermissions: UserPermission[];
   disabled: boolean;
@@ -52,12 +54,31 @@ function mapAuthUserProviders(user: UserRecord) {
   return user.providerData.map((provider) => provider.providerId).filter(Boolean);
 }
 
+function isBreakglassClaim(value: unknown) {
+  return value === true;
+}
+
+function resolveIsBreakglass(
+  data: Record<string, unknown> | undefined,
+  authUser?: UserRecord,
+  decodedToken?: DecodedIdToken
+) {
+  return Boolean(
+    data?.isBreakglass ||
+      isBreakglassClaim(authUser?.customClaims?.breakglass) ||
+      isBreakglassClaim(authUser?.customClaims?.platform_owner) ||
+      isBreakglassClaim(decodedToken?.breakglass) ||
+      isBreakglassClaim(decodedToken?.platform_owner)
+  );
+}
+
 function mapUserDoc(
   uid: string,
   authUser: UserRecord,
   data: Record<string, unknown> | undefined
 ): AppUserRecord {
   const role = isUserRole(data?.role) ? data.role : "user";
+  const isBreakglass = resolveIsBreakglass(data, authUser);
   const customPermissions = normalizePermissions(data?.customPermissions);
   const excludedPermissions = normalizePermissions(data?.excludedPermissions);
 
@@ -70,6 +91,7 @@ function mapUserDoc(
       ? data.providers.map((value) => String(value)).filter(Boolean)
       : mapAuthUserProviders(authUser),
     role,
+    isBreakglass,
     customPermissions,
     excludedPermissions,
     disabled: Boolean(data?.disabled ?? authUser.disabled),
@@ -93,6 +115,7 @@ export async function syncUserProfile(uid: string, decodedToken?: DecodedIdToken
     providers: mapAuthUserProviders(authUser),
     disabled: authUser.disabled,
     role: isUserRole(existing?.role) ? existing.role : "user",
+    isBreakglass: resolveIsBreakglass(existing, authUser, decodedToken),
     customPermissions: normalizePermissions(existing?.customPermissions),
     excludedPermissions: normalizePermissions(existing?.excludedPermissions),
     mustSetPassword: Boolean(existing?.mustSetPassword),
@@ -117,11 +140,9 @@ async function getSessionUserFromCookieValue(sessionCookie: string | undefined):
     const profile = await syncUserProfile(decoded.uid, decoded);
     return {
       ...profile,
-      effectivePermissions: getEffectivePermissions(
-        profile.role,
-        profile.customPermissions,
-        profile.excludedPermissions
-      ),
+      effectivePermissions: profile.isBreakglass
+        ? [...USER_PERMISSIONS]
+        : getEffectivePermissions(profile.role, profile.customPermissions, profile.excludedPermissions),
     };
   } catch {
     return null;
@@ -149,6 +170,12 @@ export async function requireAdminUser(
   const sessionUser = await requireSignedInUser(nextPath);
   if (sessionUser.mustSetPassword) {
     redirect("/account?reset=required");
+  }
+  if (sessionUser.isBreakglass) {
+    return {
+      ...sessionUser,
+      effectivePermissions: [...USER_PERMISSIONS],
+    };
   }
   if (!hasPermission(
     sessionUser.role,
@@ -188,6 +215,15 @@ export async function requireAdminRequestPermission(permission: UserPermission =
       response: NextResponse.json({ error: "Authentication required" }, { status: 401 }),
     };
   }
+  if (sessionUser.isBreakglass) {
+    return {
+      ok: true as const,
+      user: {
+        ...sessionUser,
+        effectivePermissions: [...USER_PERMISSIONS],
+      },
+    };
+  }
   if (!hasPermission(
     sessionUser.role,
     sessionUser.customPermissions,
@@ -218,20 +254,22 @@ export async function listAllManagedUsers(): Promise<SessionUser[]> {
   userDocs.forEach((doc) => {
     const authUser = authMap.get(doc.id);
     if (!authUser) return;
-      const profile = mapUserDoc(doc.id, authUser, doc.data());
-      merged.set(doc.id, {
-        ...profile,
-        effectivePermissions: getEffectivePermissions(
-          profile.role,
-          profile.customPermissions,
-          profile.excludedPermissions
-        ),
-      });
+    const profile = mapUserDoc(doc.id, authUser, doc.data());
+    if (profile.isBreakglass) return;
+    merged.set(doc.id, {
+      ...profile,
+      effectivePermissions: getEffectivePermissions(
+        profile.role,
+        profile.customPermissions,
+        profile.excludedPermissions
+      ),
+    });
   });
 
   authUsers.users.forEach((authUser) => {
     if (merged.has(authUser.uid)) return;
     const profile = mapUserDoc(authUser.uid, authUser, undefined);
+    if (profile.isBreakglass) return;
     merged.set(authUser.uid, {
       ...profile,
       effectivePermissions: getEffectivePermissions(
@@ -250,6 +288,24 @@ export async function listAllManagedUsers(): Promise<SessionUser[]> {
       a.uid.localeCompare(b.uid)
     );
   });
+}
+
+export async function isBreakglassUid(uid: string) {
+  const cleanUid = uid.trim();
+  if (!cleanUid) return false;
+
+  try {
+    const [docSnap, authUser] = await Promise.all([
+      adminDb.collection("users").doc(cleanUid).get(),
+      adminAuth.getUser(cleanUid),
+    ]);
+    return resolveIsBreakglass(
+      docSnap.exists ? (docSnap.data() as Record<string, unknown>) : undefined,
+      authUser
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function updateManagedUserAccess(input: {

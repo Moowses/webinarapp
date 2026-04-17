@@ -1,6 +1,7 @@
 import "server-only";
 import { requireAdminUser } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
+import { logSystemEvent } from "@/lib/system-log";
 
 export type SiteSettings = {
   siteTitle: string;
@@ -62,31 +63,57 @@ export async function updateSiteSettings(input: {
   seoKeywords?: unknown;
   seoImageUrl?: unknown;
 }) {
-  await requireAdminUser("manage_settings", "/admin/settings");
-  const siteTitle = toCleanString(input.siteTitle) || DEFAULT_SITE_SETTINGS.siteTitle;
-  const siteDescription =
-    toCleanString(input.siteDescription) || DEFAULT_SITE_SETTINGS.siteDescription;
-  const faviconUrl = normalizeFaviconUrl(toCleanString(input.faviconUrl));
-  const seoKeywords = toCleanString(input.seoKeywords);
-  const seoImageUrl = normalizeAssetUrl(toCleanString(input.seoImageUrl), "SEO image URL");
+  const actor = await requireAdminUser("manage_settings", "/admin/settings");
+  try {
+    const siteTitle = toCleanString(input.siteTitle) || DEFAULT_SITE_SETTINGS.siteTitle;
+    const siteDescription =
+      toCleanString(input.siteDescription) || DEFAULT_SITE_SETTINGS.siteDescription;
+    const faviconUrl = normalizeFaviconUrl(toCleanString(input.faviconUrl));
+    const seoKeywords = toCleanString(input.seoKeywords);
+    const seoImageUrl = normalizeAssetUrl(toCleanString(input.seoImageUrl), "SEO image URL");
 
-  await adminDb.collection("appConfig").doc("site").set(
-    {
+    await adminDb.collection("appConfig").doc("site").set(
+      {
+        siteTitle,
+        siteDescription,
+        faviconUrl,
+        seoKeywords,
+        seoImageUrl,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    await logSystemEvent({
+      level: "info",
+      action: "site_settings_updated",
+      summary: "Site settings were updated.",
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "site_settings",
+      targetId: "site",
+    });
+
+    return {
       siteTitle,
       siteDescription,
       faviconUrl,
       seoKeywords,
       seoImageUrl,
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true }
-  );
-
-  return {
-    siteTitle,
-    siteDescription,
-    faviconUrl,
-    seoKeywords,
-    seoImageUrl,
-  };
+    };
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "site_settings_update_failed",
+      summary: "Site settings update failed.",
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "site_settings",
+      targetId: "site",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw error;
+  }
 }

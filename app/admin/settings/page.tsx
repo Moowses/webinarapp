@@ -3,12 +3,13 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import SiteSettingsForm from "@/components/admin/SiteSettingsForm";
 import { requireAdminUser } from "@/lib/auth/server";
 import { getSiteSettings, updateSiteSettings } from "@/lib/site-settings";
+import { listRecentSystemLogs } from "@/lib/system-log";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage() {
   const sessionUser = await requireAdminUser("manage_settings", "/admin/settings");
-  const settings = await getSiteSettings();
+  const [settings, logs] = await Promise.all([getSiteSettings(), listRecentSystemLogs(40)]);
 
   async function updateAction(formData: FormData) {
     "use server";
@@ -39,6 +40,7 @@ export default async function AdminSettingsPage() {
         />
         <SiteSettingsForm
           initial={settings}
+          logs={logs}
           action={updateAction}
           canManageUsers={sessionUser.effectivePermissions.includes("manage_users")}
         />

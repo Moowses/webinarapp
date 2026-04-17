@@ -8,6 +8,7 @@ import {
   setPersistence,
   signInWithEmailAndPassword,
 } from "firebase/auth";
+import AdminLoadingModal from "@/components/admin/ui/AdminLoadingModal";
 import { auth } from "@/lib/firebase/client";
 
 type Props = {
@@ -140,6 +141,11 @@ export default function LoginClient({ nextPath }: Props) {
         {message ? <p className="mt-4 rounded-xl bg-[#E8F5FF] px-4 py-3 text-sm text-[#1E5685]">{message}</p> : null}
         {error ? <p className="mt-4 rounded-xl bg-[#FFF1EA] px-4 py-3 text-sm text-[#B45309]">{error}</p> : null}
       </div>
+      <AdminLoadingModal
+        open={busyMode === "email"}
+        message="Signing you in..."
+        detail="Please wait. Do not click the login button again."
+      />
     </section>
   );
 }

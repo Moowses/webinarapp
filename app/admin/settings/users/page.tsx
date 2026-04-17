@@ -8,11 +8,13 @@ import {
 import {
   createManagedUser,
   deleteManagedUser,
+  isBreakglassUid,
   listAllManagedUsers,
   requireAdminUser,
   sendManagedUserPasswordReset,
   updateManagedUserAccess,
 } from "@/lib/auth/server";
+import { logSystemEvent } from "@/lib/system-log";
 
 export const dynamic = "force-dynamic";
 
@@ -37,12 +39,26 @@ export default async function AdminUserManagementPage() {
     if (uid === actor.uid && disabled) {
       throw new Error("You cannot disable your own account.");
     }
+    if (await isBreakglassUid(uid)) {
+      throw new Error("Break-glass accounts are not manageable from this screen.");
+    }
 
     await updateManagedUserAccess({
       uid,
       role,
       grantedPermissions,
       disabled,
+    });
+    await logSystemEvent({
+      level: "info",
+      action: "user_access_updated",
+      summary: "User access was updated.",
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "user",
+      targetId: uid,
+      details: role,
     });
 
     return { ok: true as const };
@@ -51,7 +67,7 @@ export default async function AdminUserManagementPage() {
   async function createAction(formData: FormData) {
     "use server";
 
-    await requireAdminUser("manage_users", "/admin/settings/users");
+    const actor = await requireAdminUser("manage_users", "/admin/settings/users");
     const email = String(formData.get("email") ?? "").trim();
     const displayName = String(formData.get("displayName") ?? "").trim();
     const roleValue = formData.get("role");
@@ -69,6 +85,17 @@ export default async function AdminUserManagementPage() {
       role,
       grantedPermissions,
     });
+    await logSystemEvent({
+      level: "info",
+      action: "user_created",
+      summary: `User ${result.email} was created.`,
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "user",
+      targetId: result.uid,
+      details: role,
+    });
 
     return {
       ok: true as const,
@@ -80,11 +107,24 @@ export default async function AdminUserManagementPage() {
   async function sendResetAction(formData: FormData) {
     "use server";
 
-    await requireAdminUser("manage_users", "/admin/settings/users");
+    const actor = await requireAdminUser("manage_users", "/admin/settings/users");
     const uid = String(formData.get("uid") ?? "").trim();
     if (!uid) throw new Error("User ID is required.");
+    if (await isBreakglassUid(uid)) {
+      throw new Error("Break-glass accounts are not manageable from this screen.");
+    }
 
     const result = await sendManagedUserPasswordReset(uid);
+    await logSystemEvent({
+      level: "warn",
+      action: "user_password_reset_sent",
+      summary: `Password reset email sent to ${result.email}.`,
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "user",
+      targetId: uid,
+    });
     return {
       ok: true as const,
       email: result.email,
@@ -98,8 +138,21 @@ export default async function AdminUserManagementPage() {
     const uid = String(formData.get("uid") ?? "").trim();
     if (!uid) throw new Error("User ID is required.");
     if (uid === actor.uid) throw new Error("You cannot delete your own account.");
+    if (await isBreakglassUid(uid)) {
+      throw new Error("Break-glass accounts are not manageable from this screen.");
+    }
 
     await deleteManagedUser(uid);
+    await logSystemEvent({
+      level: "warn",
+      action: "user_deleted",
+      summary: "User account was deleted.",
+      actorType: actor.isBreakglass ? "breakglass" : "user",
+      actorUid: actor.uid,
+      actorEmail: actor.email,
+      targetType: "user",
+      targetId: uid,
+    });
     return { ok: true as const };
   }
 

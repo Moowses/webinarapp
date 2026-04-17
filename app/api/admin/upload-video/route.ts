@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import { NextResponse } from "next/server";
 import { requireAdminRequestPermission } from "@/lib/auth/server";
+import { logSystemEvent } from "@/lib/system-log";
 
 export const runtime = "nodejs";
 
@@ -82,8 +83,25 @@ export async function POST(request: Request) {
     await writeFile(join(targetDir, uniqueName), buffer);
 
     const publicPath = `/uploads/webinars/${folderKey}/${uniqueName}`;
+    await logSystemEvent({
+      level: "info",
+      action: "video_uploaded",
+      summary: "Webinar video uploaded.",
+      actorType: auth.user.isBreakglass ? "breakglass" : "user",
+      actorUid: auth.user.uid,
+      actorEmail: auth.user.email,
+      targetType: "webinar_video",
+      targetId: webinarId || slug || folderKey,
+      details: publicPath,
+    });
     return NextResponse.json({ publicPath });
-  } catch {
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "video_upload_failed",
+      summary: "Webinar video upload failed.",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
     return NextResponse.json({ error: "upload failed" }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import { requireAdminRequestPermission } from "@/lib/auth/server";
+import { logSystemEvent } from "@/lib/system-log";
 
 export const runtime = "nodejs";
 
@@ -64,12 +65,29 @@ export async function POST(request: Request) {
     const fileName = `${safeSlugPart(path.basename(file.name, path.extname(file.name))) || "favicon"}-${Date.now()}-${randomUUID().slice(0, 8)}${extension}`;
     const targetPath = path.join(uploadsDir, fileName);
     await writeFile(targetPath, bytes);
+    const publicPath = `/uploads/site/${fileName}`;
+    await logSystemEvent({
+      level: "info",
+      action: "favicon_uploaded",
+      summary: "Favicon uploaded.",
+      actorType: auth.user.isBreakglass ? "breakglass" : "user",
+      actorUid: auth.user.uid,
+      actorEmail: auth.user.email,
+      targetType: "site_asset",
+      targetId: publicPath,
+    });
 
     return NextResponse.json({
       ok: true,
-      publicPath: `/uploads/site/${fileName}`,
+      publicPath,
     });
-  } catch {
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "favicon_upload_failed",
+      summary: "Favicon upload failed.",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
     return NextResponse.json({ error: "Failed to upload favicon" }, { status: 500 });
   }
 }

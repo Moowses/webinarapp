@@ -5,6 +5,7 @@ import {
   buildNoShowWebhookPayload,
   postWebhookPayload,
 } from "@/lib/services/webhook";
+import { logSystemEvent } from "@/lib/system-log";
 import type { WebinarWebhook } from "@/types/webinar";
 
 export const runtime = "nodejs";
@@ -66,9 +67,26 @@ export async function POST(request: Request) {
           });
 
     await postWebhookPayload(url, payload);
+    await logSystemEvent({
+      level: "info",
+      action: "attendance_webhook_test_sent",
+      summary: "Attendance webhook test sent.",
+      actorType: auth.user.isBreakglass ? "breakglass" : "user",
+      actorUid: auth.user.uid,
+      actorEmail: auth.user.email,
+      targetType: "attendance_webhook_test",
+      targetId: url,
+      details: mode === "no-show" ? "no-show" : "attended",
+    });
     return NextResponse.json({ ok: true, payload });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Attendance webhook test failed";
+    await logSystemEvent({
+      level: "error",
+      action: "attendance_webhook_test_failed",
+      summary: "Attendance webhook test failed.",
+      details: message,
+    });
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

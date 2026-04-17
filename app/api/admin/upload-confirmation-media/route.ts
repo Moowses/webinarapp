@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import { NextResponse } from "next/server";
 import { requireAdminRequestPermission } from "@/lib/auth/server";
+import { logSystemEvent } from "@/lib/system-log";
 
 export const runtime = "nodejs";
 
@@ -85,9 +86,26 @@ export async function POST(request: Request) {
 
     const publicPath = `/uploads/webinars/${folderKey}/confirmation/${uniqueName}`;
     const mediaType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : null;
+    await logSystemEvent({
+      level: "info",
+      action: "confirmation_media_uploaded",
+      summary: "Confirmation page media uploaded.",
+      actorType: auth.user.isBreakglass ? "breakglass" : "user",
+      actorUid: auth.user.uid,
+      actorEmail: auth.user.email,
+      targetType: "confirmation_media",
+      targetId: webinarId || slug || folderKey,
+      details: publicPath,
+    });
 
     return NextResponse.json({ publicPath, mediaType });
-  } catch {
+  } catch (error) {
+    await logSystemEvent({
+      level: "error",
+      action: "confirmation_media_upload_failed",
+      summary: "Confirmation page media upload failed.",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
     return NextResponse.json({ error: "upload failed" }, { status: 500 });
   }
 }

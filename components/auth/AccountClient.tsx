@@ -11,6 +11,7 @@ type Props = {
   roleLabel: string;
   canAccessAdmin: boolean;
   mustSetPassword: boolean;
+  disabled: boolean;
 };
 
 export default function AccountClient({
@@ -19,6 +20,7 @@ export default function AccountClient({
   roleLabel,
   canAccessAdmin,
   mustSetPassword,
+  disabled,
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState<"reset" | "logout" | "set-password" | null>(null);
@@ -111,7 +113,29 @@ export default function AccountClient({
 
   return (
     <div className="space-y-6">
-      {mustSetPassword ? (
+      {disabled ? (
+        <section className="mx-auto max-w-xl rounded-[2rem] border border-[#E6EDF3] bg-white p-8 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.24em] text-[#6B7280]">Account Disabled</p>
+          <h1 className="mt-3 text-3xl font-semibold text-[#1F2A37]">Access disabled</h1>
+          <p className="mt-2 text-sm text-[#6B7280]">
+            This account has been disabled. Contact an administrator if you need access restored.
+          </p>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              disabled={busy !== null}
+              className="rounded-xl border border-[#D7E2EC] bg-white px-4 py-2.5 text-sm font-semibold text-[#1F2A37] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy === "logout" ? "Signing out..." : "Sign out"}
+            </button>
+          </div>
+
+          {message ? <p className="mt-4 rounded-xl bg-[#E8F5FF] px-4 py-3 text-sm text-[#1E5685]">{message}</p> : null}
+          {error ? <p className="mt-4 rounded-xl bg-[#FFF1EA] px-4 py-3 text-sm text-[#B45309]">{error}</p> : null}
+        </section>
+      ) : mustSetPassword ? (
         <section className="mx-auto max-w-xl rounded-[2rem] border border-[#E6EDF3] bg-white p-8 shadow-sm">
           <p className="text-xs uppercase tracking-[0.24em] text-[#6B7280]">Account Setup</p>
           <h1 className="mt-3 text-3xl font-semibold text-[#1F2A37]">Create your password</h1>

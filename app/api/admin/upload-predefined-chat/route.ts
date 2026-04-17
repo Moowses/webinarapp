@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { requireAdminRequestPermission } from "@/lib/auth/server";
 import { adminDb } from "@/lib/services/firebase-admin";
+import { logSystemEvent } from "@/lib/system-log";
 
 export const runtime = "nodejs";
 
@@ -280,9 +281,27 @@ export async function POST(request: Request) {
       inserted += chunk.length;
     }
 
+    await logSystemEvent({
+      level: "info",
+      action: "predefined_chat_uploaded",
+      summary: "Predefined chat messages uploaded.",
+      actorType: auth.user.isBreakglass ? "breakglass" : "user",
+      actorUid: auth.user.uid,
+      actorEmail: auth.user.email,
+      targetType: "webinar_predefined_chat",
+      targetId: webinarId,
+      details: `inserted=${inserted}, skipped=${skipped}`,
+    });
+
     return NextResponse.json({ inserted, skipped });
   } catch (error) {
     console.error("Upload predefined chat failed", error);
+    await logSystemEvent({
+      level: "error",
+      action: "predefined_chat_upload_failed",
+      summary: "Predefined chat upload failed.",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
     return NextResponse.json({ error: "upload failed" }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@ import { access, rm } from "fs/promises";
 import { join, normalize } from "path";
 import { NextResponse } from "next/server";
 import { requireAdminRequestPermission } from "@/lib/auth/server";
+import { logSystemEvent } from "@/lib/system-log";
 
 export const runtime = "nodejs";
 
@@ -32,10 +33,26 @@ export async function POST(request: Request) {
     const filePath = resolveVideoPath(publicPath);
     await access(filePath);
     await rm(filePath, { force: true });
+    await logSystemEvent({
+      level: "warn",
+      action: "video_deleted",
+      summary: "Webinar video deleted.",
+      actorType: auth.user.isBreakglass ? "breakglass" : "user",
+      actorUid: auth.user.uid,
+      actorEmail: auth.user.email,
+      targetType: "webinar_video",
+      targetId: publicPath,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "delete failed";
+    await logSystemEvent({
+      level: "error",
+      action: "video_delete_failed",
+      summary: "Video delete failed.",
+      details: message,
+    });
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
